@@ -1,4 +1,5 @@
 // library crate root — exposes modules for integration testing
+pub mod content_router;
 pub mod detection;
 pub mod patterns;
 pub mod replacement;
