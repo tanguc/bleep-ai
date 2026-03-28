@@ -1,0 +1,60 @@
+mod event_bus;
+mod hudsucker;
+mod logging;
+mod patterns;
+mod proxy;
+mod regex_patterns;
+mod request_logger;
+mod types;
+
+use clap::Parser;
+use tracing::info;
+
+use crate::hudsucker::run_hudsucker;
+
+#[derive(Parser)]
+#[command(
+    name = "bleep-gateway",
+    version,
+    about = "Bleep AI gateway - day-1 pass-through proxy"
+)]
+struct Cli {
+    /// port to listen on (0 = ephemeral)
+    #[arg(short, long, default_value_t = 9190)]
+    port: u16,
+
+    /// path for JSONL log output
+    #[arg(long, default_value = "bleep.jsonl")]
+    log_file: String,
+}
+
+#[tokio::main]
+async fn main() {
+    let _cli = Cli::parse();
+    tracing_subscriber::fmt::init();
+
+    run_hudsucker().await;
+
+    // let app_state = types::AppState {
+    //     client: reqwest::Client::new(),
+    //     log_file: _cli.log_file,
+    // };
+
+    // let app = axum::Router::new()
+    //     .route("/{*path}", axum::routing::any(proxy::proxy_handler))
+    //     .with_state(app_state);
+
+    // // TODO: build shared app state (api_key, log writer, http client)
+    // // TODO: build axum router with routes
+    // // TODO: bind listener and print actual port
+    // // TODO: serve
+
+    // info!("Starting bleep-gateway on port {}", _cli.port);
+
+    // let listener = tokio::net::TcpListener::bind(("0.0.0.0", _cli.port))
+    //     .await
+    //     .unwrap();
+    // axum::serve(listener, app).await.unwrap();
+
+    // axum::serve::
+}
