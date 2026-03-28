@@ -28,6 +28,10 @@ struct Cli {
     #[arg(long, default_value = "bleep.jsonl")]
     log_file: String,
 
+    /// minimum confidence level for detections: low | medium | high (default: low)
+    #[arg(long, default_value = "low", value_name = "LEVEL")]
+    min_confidence: String,
+
     /// print open source license attributions and exit
     #[arg(long)]
     licenses: bool,
@@ -46,6 +50,7 @@ async fn main() {
 
     tracing_subscriber::fmt::init();
 
+    // TODO(phase-5): pass _cli.min_confidence into proxy handler for detection::confidence_meets filter
     run_hudsucker().await;
 
     // let app_state = types::AppState {
