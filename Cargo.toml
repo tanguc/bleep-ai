@@ -47,3 +47,4 @@ regex = "1"
 
 [dev-dependencies]
 toml = "0.8"
+tempfile = "3"
