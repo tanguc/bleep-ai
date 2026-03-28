@@ -197,14 +197,64 @@ impl HttpHandler for LogHandler {
     }
 
     async fn handle_response(&mut self, _ctx: &HttpContext, res: Response<Body>) -> Response<Body> {
-        let (parts, body) = res.into_parts();
+        let (mut parts, body) = res.into_parts();
         let bytes = body.collect().await.unwrap().to_bytes();
+
+        // extract response content-type and content-encoding
+        let content_type = parts
+            .headers
+            .get(hyper::header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_owned);
+        let content_encoding = parts
+            .headers
+            .get(hyper::header::CONTENT_ENCODING)
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_owned);
+
+        let ct_str = content_type.as_deref();
+        let ce_str = content_encoding.as_deref();
+
+        // route to process_body (handles SSE via sse_process_full, JSON, plain, etc.)
+        // note: process_body buffers fully before routing; SSE per-frame processing
+        // occurs inside sse_process_full on the buffered body (per-frame within buffer,
+        // not per-network-chunk — true streaming requires a streaming body API not
+        // available in hudsucker's handle_response interface)
+        let (replaced_bytes, redactions) =
+            content_router::process_body(ct_str, ce_str, bytes.clone());
+
+        let min_conf = self.min_confidence.as_str();
+        let loggable_redactions: Vec<_> = redactions
+            .iter()
+            .filter(|r| detection::confidence_meets_severity(&r.severity, min_conf))
+            .collect();
+
+        if !redactions.is_empty() {
+            // update content-length if present (INV-03)
+            content_router::update_content_length(&mut parts.headers, replaced_bytes.len(), true);
+
+            // write audit entries for response redactions
+            let entries = content_router::audit::make_audit_entries(
+                &uuid::Uuid::new_v4().to_string(),
+                ct_str.unwrap_or(""),
+                &loggable_redactions
+                    .iter()
+                    .map(|r| (*r).clone())
+                    .collect::<Vec<_>>(),
+            );
+            if let Err(e) =
+                content_router::audit::write_audit_entries(&entries, Path::new(self.log_file.as_str()))
+            {
+                warn!("[bleep] audit log write failed (response): {e}");
+            }
+        }
 
         request_logger::log(&serde_json::json!({
             "type": "response",
             "ts": chrono::Utc::now().to_rfc3339(),
             "status": parts.status.as_u16(),
             "body": body_to_loggable(&bytes),
+            "redactions": loggable_redactions.len(),
         }));
 
         event_bus::emit(ProxyEvent::Response {
@@ -214,7 +264,7 @@ impl HttpHandler for LogHandler {
             status: parts.status.as_u16(),
         });
 
-        Response::from_parts(parts, Body::from(http_body_util::Full::new(bytes)))
+        Response::from_parts(parts, Body::from(http_body_util::Full::new(replaced_bytes)))
     }
 }
 
