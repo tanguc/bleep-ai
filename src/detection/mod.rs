@@ -153,7 +153,7 @@ fn shannon_entropy(bytes: &[u8]) -> f64 {
 }
 
 /// luhn algorithm validation for credit card digit sequences
-fn luhn_valid(digits: &[u8]) -> bool {
+pub(crate) fn luhn_valid(digits: &[u8]) -> bool {
     let digits: Vec<u8> = digits
         .iter()
         .filter(|&&b| b.is_ascii_digit())
@@ -412,6 +412,70 @@ mod tests {
         );
         // too short
         assert!(!luhn_valid(b"4"), "single digit should fail luhn");
+    }
+
+    // --- dedicated luhn tests (TST-03) ---
+
+    #[test]
+    fn test_luhn_mastercard_valid() {
+        // known valid mastercard
+        assert!(
+            luhn_valid(b"5425233430109903"),
+            "5425233430109903 should be luhn valid (Mastercard)"
+        );
+    }
+
+    #[test]
+    fn test_luhn_amex_valid() {
+        // american express 15-digit
+        assert!(
+            luhn_valid(b"371449635398431"),
+            "371449635398431 should be luhn valid (Amex 15-digit)"
+        );
+    }
+
+    #[test]
+    fn test_luhn_invalid_last_digit() {
+        // valid mastercard with last digit changed
+        assert!(
+            !luhn_valid(b"5425233430109902"),
+            "5425233430109902 should fail luhn (last digit changed)"
+        );
+    }
+
+    #[test]
+    fn test_luhn_too_short() {
+        assert!(!luhn_valid(b"123"), "3-digit input should fail luhn (too short)");
+        assert!(!luhn_valid(b""), "empty input should fail luhn");
+    }
+
+    #[test]
+    fn test_luhn_all_zeros() {
+        // 0000000000000000 passes luhn (all zeros: sum=0, 0%10==0)
+        // this is mathematically valid but not a real card — just verifying algorithm correctness
+        assert!(
+            luhn_valid(b"0000000000000000"),
+            "all-zeros 16-digit passes luhn by algorithm definition (sum mod 10 = 0)"
+        );
+    }
+
+    #[test]
+    fn test_luhn_with_spaces_and_dashes() {
+        // real CC format with spaces: "4532 0151 1283 0366"
+        // luhn_valid filters non-digits, so spaces/dashes are stripped
+        assert!(
+            luhn_valid(b"4532 0151 1283 0366"),
+            "visa with spaces must pass luhn after stripping non-digits"
+        );
+        assert!(
+            luhn_valid(b"4532-0151-1283-0366"),
+            "visa with dashes must pass luhn after stripping non-digits"
+        );
+        // corresponding invalid with spaces
+        assert!(
+            !luhn_valid(b"4532 0151 1283 0367"),
+            "invalid visa with spaces must fail luhn"
+        );
     }
 
     #[test]
