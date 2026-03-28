@@ -26,11 +26,23 @@ struct Cli {
     /// path for JSONL log output
     #[arg(long, default_value = "bleep.jsonl")]
     log_file: String,
+
+    /// print open source license attributions and exit
+    #[arg(long)]
+    licenses: bool,
 }
 
 #[tokio::main]
 async fn main() {
     let _cli = Cli::parse();
+
+    if _cli.licenses {
+        println!("{}", crate::patterns::ATTRIBUTION);
+        let rule_count = crate::patterns::get_normalized_rules().len();
+        println!("\nLoaded {} detection rules.", rule_count);
+        return;
+    }
+
     tracing_subscriber::fmt::init();
 
     run_hudsucker().await;
