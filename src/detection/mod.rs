@@ -119,6 +119,19 @@ pub fn confidence_meets(match_conf: &Confidence, threshold: &str) -> bool {
     }
 }
 
+/// returns true if a severity string meets the min_confidence threshold.
+///
+/// used to filter Redaction entries (which carry severity, not Confidence enum)
+/// against the CLI --min-confidence flag. severity levels map as:
+/// critical/high → Confidence::High, medium → Confidence::Medium, low → Confidence::Low
+pub fn confidence_meets_severity(severity: &str, threshold: &str) -> bool {
+    match threshold {
+        "high" => matches!(severity, "high" | "critical"),
+        "medium" => matches!(severity, "high" | "critical" | "medium"),
+        _ => true, // "low" or unknown = pass everything
+    }
+}
+
 /// shannon entropy over byte value distribution
 fn shannon_entropy(bytes: &[u8]) -> f64 {
     if bytes.is_empty() {

@@ -9,9 +9,11 @@ use hudsucker::{
     *,
 };
 use serde::Serialize;
-use std::{io::Read, net::SocketAddr, sync::Arc};
+use std::{io::Read, net::SocketAddr, path::Path, sync::Arc};
 use tracing::*;
 
+use crate::content_router;
+use crate::detection;
 use crate::event_bus;
 use crate::event_bus::{ProxyEvent, RedactedEntry};
 use crate::request_logger;
@@ -87,36 +89,110 @@ impl HttpHandler for LogHandler {
         let (mut parts, body) = req.into_parts();
         let bytes = body.collect().await.unwrap().to_bytes();
 
-        // TODO(phase-5): wire detection::scan() + replacement::apply() here
-        // for now: passthrough — body is forwarded unchanged
-        let replaced_bytes = bytes.clone();
+        // aws sigv4 bypass: signed requests must not be modified (body signature would break)
+        if let Some(auth) = parts.headers.get(hyper::header::AUTHORIZATION) {
+            if auth
+                .to_str()
+                .unwrap_or("")
+                .starts_with("AWS4-HMAC-SHA256 Credential=")
+            {
+                warn!("[bleep] skipping replacement: AWS SigV4 signed request (rule: signed-request-bypass)");
+                let req = Request::from_parts(parts, Body::from(http_body_util::Full::new(bytes)));
+                return req.into();
+            }
+        }
 
-        // log original body
+        // extract content-type and content-encoding for routing
+        let content_type = parts
+            .headers
+            .get(hyper::header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_owned);
+        let content_encoding = parts
+            .headers
+            .get(hyper::header::CONTENT_ENCODING)
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_owned);
+
+        let ct_str = content_type.as_deref();
+        let ce_str = content_encoding.as_deref();
+
+        // run content router (detection + replacement, all content types, gzip-aware)
+        let (replaced_bytes, redactions) =
+            content_router::process_body(ct_str, ce_str, bytes.clone());
+
+        // filter redactions by min_confidence for audit log emission
+        let min_conf = self.min_confidence.as_str();
+        let loggable_redactions: Vec<_> = redactions
+            .iter()
+            .filter(|r| {
+                // severity proxy for confidence: high/medium/low maps to confidence threshold
+                // (Redaction does not carry Confidence enum — use severity as proxy for v1.1)
+                detection::confidence_meets_severity(&r.severity, min_conf)
+            })
+            .collect();
+
+        // if any redactions: update content-length, write audit log, emit event
+        let had_replacements = !redactions.is_empty();
+
+        if had_replacements {
+            // update content-length if header is present (INV-03)
+            content_router::update_content_length(
+                &mut parts.headers,
+                replaced_bytes.len(),
+                true,
+            );
+
+            // write audit entries to log file (original values — local disk only)
+            let entries = content_router::audit::make_audit_entries(
+                &uuid::Uuid::new_v4().to_string(),
+                ct_str.unwrap_or(""),
+                &loggable_redactions
+                    .iter()
+                    .map(|r| (*r).clone())
+                    .collect::<Vec<_>>(),
+            );
+            if let Err(e) =
+                content_router::audit::write_audit_entries(&entries, Path::new(self.log_file.as_str()))
+            {
+                warn!("[bleep] audit log write failed: {e}");
+            }
+        }
+
+        // log original body (before replacement — for local request log)
         request_logger::log(&serde_json::json!({
             "type": "request",
             "ts": chrono::Utc::now().to_rfc3339(),
             "method": parts.method.as_str(),
             "uri": parts.uri.to_string(),
             "body": body_to_loggable(&bytes),
+            "redactions": loggable_redactions.len(),
         }));
+
+        // emit event bus with fake values only (original NOT emitted — SAF-08)
+        let redacted_entries: Vec<RedactedEntry> = redactions
+            .iter()
+            .map(|r| RedactedEntry {
+                rule_id: r.rule_id.clone(),
+                category: r.category.clone(),
+                subcategory: r.subcategory.clone(),
+                severity: r.severity.clone(),
+                fake_value: r.fake.clone(),
+            })
+            .collect();
 
         event_bus::emit(ProxyEvent::Request {
             id: uuid::Uuid::new_v4().to_string(),
             ts: chrono::Utc::now().to_rfc3339(),
             method: parts.method.to_string(),
             uri: parts.uri.to_string(),
-            redacted: vec![],
+            redacted: redacted_entries,
         });
 
-        // fix content-length if present (body unchanged so length is same, but keep consistent)
-        if parts.headers.contains_key(hyper::header::CONTENT_LENGTH) {
-            parts.headers.insert(
-                hyper::header::CONTENT_LENGTH,
-                hyper::header::HeaderValue::from(replaced_bytes.len()),
-            );
-        }
-
-        let req = Request::from_parts(parts, Body::from(http_body_util::Full::new(replaced_bytes)));
+        let req = Request::from_parts(
+            parts,
+            Body::from(http_body_util::Full::new(replaced_bytes)),
+        );
         req.into()
     }
 

@@ -1,3 +1,4 @@
+mod content_router;
 mod detection;
 mod event_bus;
 mod hudsucker;

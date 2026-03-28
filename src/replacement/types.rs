@@ -1,6 +1,7 @@
 use std::ops::Range;
 
 /// record of a single replacement — forward map entry for de-anonymization
+#[derive(Clone)]
 pub struct Redaction {
     /// rule that triggered this replacement
     pub rule_id: String,
