@@ -21,9 +21,25 @@ pub fn scan(body: &[u8]) -> Vec<Match> {
         return Vec::new();
     }
 
+    scan_inner(body)
+}
+
+/// scan an isolated field (JSON string value, header value, etc.) without the combined pre-filter.
+///
+/// use this when the field value has already been extracted from its context — the
+/// combined pre-filter would reject it because context keywords (from surrounding fields)
+/// are not present in the isolated value.
+///
+/// still applies per-rule keyword checks, entropy, and checksum filters.
+pub fn scan_field(field: &[u8]) -> Vec<Match> {
+    scan_inner(field)
+}
+
+/// core matching logic shared by scan() and scan_field()
+fn scan_inner(body: &[u8]) -> Vec<Match> {
     let mut matches: Vec<Match> = Vec::new();
 
-    // step b: per-rule matching
+    // per-rule matching
     for (rule_arc, regex) in RULES.iter() {
         // inner keyword pre-filter (per-rule keywords)
         if !rule_arc.keywords.is_empty()
@@ -140,7 +156,7 @@ fn shannon_entropy(bytes: &[u8]) -> f64 {
 }
 
 /// luhn algorithm validation for credit card digit sequences
-fn luhn_valid(digits: &[u8]) -> bool {
+pub(crate) fn luhn_valid(digits: &[u8]) -> bool {
     let digits: Vec<u8> = digits
         .iter()
         .filter(|&&b| b.is_ascii_digit())
@@ -479,5 +495,86 @@ mod tests {
         // verified by the absence of those imports in the file itself
         // if this test compiles without async runtime, the constraint is satisfied
         let _ = scan(b"test");
+    }
+}
+
+/// TST-03: dedicated Luhn checksum validation tests
+#[cfg(test)]
+mod luhn_tests {
+    use super::luhn_valid;
+
+    /// known valid Visa: 4532015112830366
+    #[test]
+    fn test_luhn_valid_visa() {
+        assert!(luhn_valid(b"4532015112830366"), "Visa 4532015112830366 must be Luhn-valid");
+    }
+
+    /// known valid Mastercard: 5425233430109903
+    #[test]
+    fn test_luhn_valid_mastercard() {
+        assert!(luhn_valid(b"5425233430109903"), "Mastercard 5425233430109903 must be Luhn-valid");
+    }
+
+    /// known valid Amex (15 digits): 371449635398431
+    #[test]
+    fn test_luhn_valid_amex() {
+        assert!(luhn_valid(b"371449635398431"), "Amex 371449635398431 must be Luhn-valid");
+    }
+
+    /// invalid: last digit of valid Visa changed by 1
+    #[test]
+    fn test_luhn_invalid_visa_last_digit() {
+        assert!(!luhn_valid(b"4532015112830367"), "4532015112830367 must fail Luhn");
+    }
+
+    /// single digit must fail Luhn (requires at least 2 digits)
+    #[test]
+    fn test_luhn_invalid_short() {
+        assert!(!luhn_valid(b"4"), "single digit must fail Luhn (too short, < 2 digits required)");
+        assert!(!luhn_valid(b""), "empty bytes must fail Luhn");
+    }
+
+    /// input with spaces and dashes (real-world CC format): non-digits are stripped
+    #[test]
+    fn test_luhn_with_separators() {
+        // spaces stripped: 4532 0151 1283 0366 = 4532015112830366 (valid)
+        assert!(
+            luhn_valid(b"4532 0151 1283 0366"),
+            "Visa with spaces must still be Luhn-valid after stripping separators"
+        );
+        // dashes stripped: 4532-0151-1283-0366
+        assert!(
+            luhn_valid(b"4532-0151-1283-0366"),
+            "Visa with dashes must still be Luhn-valid after stripping separators"
+        );
+    }
+
+    /// invalid CC with separator: change last digit, add spaces
+    #[test]
+    fn test_luhn_invalid_with_separators() {
+        assert!(
+            !luhn_valid(b"4532 0151 1283 0367"),
+            "invalid CC with spaces must fail Luhn"
+        );
+    }
+
+    /// known valid Discover: 6011111111111117
+    #[test]
+    fn test_luhn_valid_discover() {
+        assert!(luhn_valid(b"6011111111111117"), "Discover 6011111111111117 must be Luhn-valid");
+    }
+
+    /// test that luhn_valid is consistent with fake_cc_luhn output (round-trip)
+    #[test]
+    fn test_luhn_valid_fake_cc_output() {
+        // generate 20 fake CC numbers — all must pass Luhn
+        for _ in 0..20 {
+            let cc = crate::replacement::replacers::generate("faker_cc_luhn", "test", b"4532015112830366");
+            assert!(
+                luhn_valid(cc.as_bytes()),
+                "fake_cc_luhn output must always be Luhn-valid, got: {}",
+                cc
+            );
+        }
     }
 }

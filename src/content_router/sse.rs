@@ -84,24 +84,23 @@ pub fn process_frame(frame: SseFrame) -> (Vec<u8>, Vec<Redaction>) {
     }
 
     // try to parse data field as JSON and route to JSON handler
+    // note: json::handle already uses scan_field for isolated string values
     let data_bytes = Bytes::copy_from_slice(frame.data.as_bytes());
     let (replaced_data_bytes, redactions) = if serde_json::from_str::<serde_json::Value>(&frame.data).is_ok() {
         match crate::content_router::json::handle(data_bytes) {
             Ok(pair) => pair,
             Err(_) => {
-                // fallback to plain
-                match crate::content_router::plain::handle(Bytes::copy_from_slice(frame.data.as_bytes())) {
-                    Ok(pair) => pair,
-                    Err(_) => (Bytes::copy_from_slice(frame.data.as_bytes()), vec![]),
-                }
+                // fallback: scan data field as isolated field bytes
+                let matches = crate::detection::scan_field(frame.data.as_bytes());
+                let d = Bytes::copy_from_slice(frame.data.as_bytes());
+                crate::replacement::apply(d, matches)
             }
         }
     } else {
-        // plain text data field
-        match crate::content_router::plain::handle(data_bytes) {
-            Ok(pair) => pair,
-            Err(_) => (Bytes::copy_from_slice(frame.data.as_bytes()), vec![]),
-        }
+        // plain text data field — scan_field since data is isolated from surrounding context
+        let matches = crate::detection::scan_field(frame.data.as_bytes());
+        let d = Bytes::copy_from_slice(frame.data.as_bytes());
+        crate::replacement::apply(d, matches)
     };
 
     let replaced_data = String::from_utf8_lossy(&replaced_data_bytes).into_owned();

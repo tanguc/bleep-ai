@@ -88,7 +88,7 @@ fn scan_authorization_header(
     if let Some(token) = value_str.strip_prefix("Bearer ") {
         // scan only the token portion
         let token_bytes = Bytes::copy_from_slice(token.as_bytes());
-        let matches = crate::detection::scan(&token_bytes);
+        let matches = crate::detection::scan_field(&token_bytes);
         if matches.is_empty() {
             return vec![];
         }
@@ -109,7 +109,7 @@ fn scan_authorization_header(
             }
         };
         let decoded_bytes = Bytes::from(decoded);
-        let matches = crate::detection::scan(&decoded_bytes);
+        let matches = crate::detection::scan_field(&decoded_bytes);
         if matches.is_empty() {
             return vec![];
         }
@@ -133,7 +133,7 @@ fn scan_raw_header_value(
     value_bytes: &[u8],
 ) -> Vec<Redaction> {
     let bytes = Bytes::copy_from_slice(value_bytes);
-    let matches = crate::detection::scan(&bytes);
+    let matches = crate::detection::scan_field(&bytes);
     if matches.is_empty() {
         return vec![];
     }
