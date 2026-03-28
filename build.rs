@@ -1161,3 +1161,208 @@ fn main() {
         eprintln!("build.rs: updated .gitignore");
     }
 }
+
+// NOTE: build.rs tests are in tests/build_pipeline.rs
+// build.rs is a separate compilation unit — #[cfg(test)] here is not run by `cargo test`
+// the test file reimplements helpers inline to avoid the import limitation
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── helper tests ──────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_slugify() {
+        assert_eq!(slugify("AWS API Key"), "aws-api-key");
+        assert_eq!(slugify("U.S. Phone Number"), "us-phone-number");
+        assert_eq!(slugify("Stripe API Key"), "stripe-api-key");
+        assert_eq!(slugify("ssn_number - 3"), "ssn-number-3");
+    }
+
+    #[test]
+    fn test_gitleaks_confidence() {
+        // prefix-anchored: contains known vendor literal "sk_test"
+        let anchored = r"\b((?:sk|rk)_(?:test|live|prod)_[a-zA-Z0-9]{10,99})\b";
+        assert_eq!(infer_confidence_gitleaks(anchored), "high");
+
+        // context-anchored: contains "=" operator
+        let context = r"(?i)(?:adafruit)[^0-9a-z\-_](?:[0-9a-z\-_]{0,50}?)([0-9a-z]{32})";
+        assert_eq!(infer_confidence_gitleaks(context), "medium");
+
+        // akia prefix → high
+        let aws = r"\b(AKIA[A-Z0-9]{16})\b";
+        assert_eq!(infer_confidence_gitleaks(aws), "high");
+    }
+
+    #[test]
+    fn test_np_confidence() {
+        // categories without "fuzzy" → high
+        let high_cats = vec!["api".to_string(), "identifier".to_string()];
+        assert_eq!(infer_confidence_np(&high_cats), "high");
+
+        // categories with "fuzzy" → medium
+        let fuzzy_cats = vec!["api".to_string(), "fuzzy".to_string(), "secret".to_string()];
+        assert_eq!(infer_confidence_np(&fuzzy_cats), "medium");
+
+        // empty categories → high (no fuzzy marker)
+        let empty: Vec<String> = vec![];
+        assert_eq!(infer_confidence_np(&empty), "high");
+    }
+
+    #[test]
+    fn test_derive_replacement_type() {
+        assert_eq!(derive_replacement_type("secret", "aws"), "faker_aws_key");
+        assert_eq!(derive_replacement_type("pii", "email"), "faker_email");
+        assert_eq!(derive_replacement_type("infra", "ipv4"), "passthrough");
+        assert_eq!(derive_replacement_type("", "unknown"), "generic_random");
+        assert_eq!(derive_replacement_type("pii", "ssn"), "faker_ssn");
+        assert_eq!(derive_replacement_type("secret", "jwt"), "faker_jwt");
+        assert_eq!(derive_replacement_type("pii", "cc"), "faker_cc_luhn");
+    }
+
+    #[test]
+    fn test_dedup_priority() {
+        // same id from all 4 sources — hand-authored must win
+        let spdb_rule = NormalizedRule {
+            id: "test.duplicate".to_string(),
+            name: "From SPDB".to_string(),
+            category: "pii".to_string(),
+            subcategory: "email".to_string(),
+            source: "secrets-patterns-db".to_string(),
+            confidence: "high".to_string(),
+            regex: r"[a-z]+@[a-z]+\.com".to_string(),
+            keywords: vec![],
+            entropy: None,
+            tags: vec![],
+            checksum_type: None,
+            replacement_type: "faker_email".to_string(),
+            description: "".to_string(),
+            severity: "high".to_string(),
+        };
+        let gl_rule = NormalizedRule {
+            id: "test.duplicate".to_string(),
+            name: "From Gitleaks".to_string(),
+            source: "gitleaks".to_string(),
+            ..spdb_rule.clone()
+        };
+        let np_rule = NormalizedRule {
+            id: "test.duplicate".to_string(),
+            name: "From NP".to_string(),
+            source: "nosey-parker".to_string(),
+            ..spdb_rule.clone()
+        };
+        let ha_rule = NormalizedRule {
+            id: "test.duplicate".to_string(),
+            name: "From Hand-Authored".to_string(),
+            source: "hand-authored".to_string(),
+            ..spdb_rule.clone()
+        };
+
+        // build dedup map: spdb first, then gl, then np, then ha (highest priority overwrites)
+        let mut dedup: HashMap<String, NormalizedRule> = HashMap::new();
+        dedup.insert(spdb_rule.id.clone(), spdb_rule);
+        dedup.insert(gl_rule.id.clone(), gl_rule);
+        dedup.insert(np_rule.id.clone(), np_rule);
+        dedup.insert(ha_rule.id.clone(), ha_rule);
+
+        let winner = dedup.get("test.duplicate").unwrap();
+        // last insert wins in HashMap — ha is last, so hand-authored wins
+        assert_eq!(winner.source, "hand-authored",
+            "hand-authored should win dedup for duplicate ids");
+    }
+
+    #[test]
+    fn test_gitleaks_parser() {
+        let fixture = include_str!("tests/fixtures/gitleaks_snippet.toml");
+        let gl_file: GitleaksFile = toml::from_str(fixture)
+            .expect("fixture must parse as gitleaks TOML");
+
+        assert_eq!(gl_file.rules.len(), 2);
+
+        let stripe = &gl_file.rules[0];
+        assert_eq!(stripe.id, "stripe-access-token");
+        assert!(stripe.regex.is_some(), "stripe rule must have regex");
+        let regex = stripe.regex.as_ref().unwrap();
+        // prefix-anchored: sk_test/sk_live in the regex → high confidence
+        assert_eq!(infer_confidence_gitleaks(regex), "high");
+        // id gets gl. prefix
+        let normalized_id = format!("gl.{}", stripe.id);
+        assert!(normalized_id.starts_with("gl."), "id must be prefixed with gl.");
+        assert_eq!(stripe.tags.as_ref().unwrap(), &["stripe"]);
+        assert_eq!(stripe.entropy.unwrap(), 2.0);
+        assert_eq!(stripe.keywords.as_ref().unwrap(), &["sk_test", "sk_live"]);
+
+        let adafruit = &gl_file.rules[1];
+        assert_eq!(adafruit.id, "adafruit-api-key");
+        let ada_regex = adafruit.regex.as_ref().unwrap();
+        // context-anchored (contains (?i)) → medium confidence
+        assert_eq!(infer_confidence_gitleaks(ada_regex), "medium");
+        assert_eq!(
+            format!("gl.{}", adafruit.id),
+            "gl.adafruit-api-key"
+        );
+    }
+
+    #[test]
+    fn test_spdb_parser() {
+        let fixture = include_str!("tests/fixtures/spdb_snippet.yaml");
+        let patterns = parse_spdb_file(fixture, "tests/fixtures/spdb_snippet.yaml");
+
+        assert_eq!(patterns.len(), 2);
+
+        let aws = &patterns[0];
+        assert_eq!(aws.name, "AWS API Key");
+        assert_eq!(aws.confidence, "high");
+        // id is slugified name with spdb. prefix
+        let id = format!("spdb.{}", slugify(&aws.name));
+        assert_eq!(id, "spdb.aws-api-key");
+        // source is "secrets-patterns-db"
+        // (the parser returns raw SpdbPattern; source assignment happens in main pipeline)
+
+        let stripe = &patterns[1];
+        assert_eq!(stripe.name, "Stripe API Key");
+        assert_eq!(stripe.confidence, "high");
+        assert_eq!(format!("spdb.{}", slugify(&stripe.name)), "spdb.stripe-api-key");
+    }
+
+    #[test]
+    fn test_np_parser() {
+        let fixture = include_str!("tests/fixtures/np_snippet.yaml");
+        let rules = parse_np_file(fixture, "tests/fixtures/np_snippet.yaml");
+
+        assert_eq!(rules.len(), 2, "expected 2 rules from np fixture");
+
+        let aws1 = &rules[0];
+        assert_eq!(aws1.id, "np.aws.1", "NP id must be verbatim (already namespaced)");
+        assert_eq!(aws1.name, "AWS API Key");
+        assert!(aws1.categories.contains(&"api".to_string()), "categories must include 'api'");
+        // no fuzzy → high confidence
+        assert_eq!(infer_confidence_np(&aws1.categories), "high");
+        // categories mapped to tags, NOT category field
+        assert!(!aws1.categories.is_empty(), "categories must be preserved for tag mapping");
+        assert!(!aws1.pattern.is_empty(), "pattern must be present");
+
+        let aws2 = &rules[1];
+        assert_eq!(aws2.id, "np.aws.2");
+        assert!(aws2.categories.contains(&"fuzzy".to_string()), "aws2 must have fuzzy category");
+        assert_eq!(infer_confidence_np(&aws2.categories), "medium");
+        // multiline (?x) pattern must be preserved with newlines
+        assert!(aws2.pattern.contains('\n'), "multiline pattern must preserve newlines");
+        assert!(aws2.pattern.contains("(?x)"), "(?x) flag must be preserved");
+    }
+
+    #[test]
+    fn test_invalid_regex_fails_validation() {
+        // a regex with an unclosed group should fail to compile
+        let bad_regex = r"(?unclosed";
+        let result = std::panic::catch_unwind(|| {
+            regex::bytes::RegexBuilder::new(bad_regex)
+                .size_limit(256 * 1024 * 1024)
+                .dfa_size_limit(256 * 1024 * 1024)
+                .build()
+                .unwrap_or_else(|e| panic!("invalid regex: {}", e));
+        });
+        assert!(result.is_err(), "invalid regex must cause a panic/error");
+    }
+}

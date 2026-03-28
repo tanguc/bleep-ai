@@ -1,0 +1,21 @@
+rules:
+  - name: AWS API Key
+    id: np.aws.1
+    pattern: '\b((?:A3T[A-Z0-9]|AKIA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA|ASIA)[A-Z0-9]{16})\b'
+    categories:
+      - api
+      - identifier
+    examples:
+      - 'AKIADEADBEEFDEADBEEF'
+
+  - name: AWS Secret Access Key
+    id: np.aws.2
+    pattern: |
+      (?x)(?i)
+      \b
+      aws_? (?:secret)? _? (?:access)? _? (?:key)?
+      ([a-z0-9/+=]{40})
+    categories:
+      - api
+      - fuzzy
+      - secret

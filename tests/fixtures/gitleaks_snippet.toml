@@ -1,0 +1,13 @@
+[[rules]]
+id = "stripe-access-token"
+description = "Stripe Access Token"
+regex = '\b((?:sk|rk)_(?:test|live|prod)_[a-zA-Z0-9]{10,99})\b'
+entropy = 2.0
+keywords = ["sk_test", "sk_live"]
+tags = ["stripe"]
+
+[[rules]]
+id = "adafruit-api-key"
+description = "Adafruit API Key"
+regex = '(?i)(?:adafruit)[^0-9a-z\-_](?:[0-9a-z\-_]{0,50}?)[^0-9a-z\-_]{0,4}([0-9a-z]{32})'
+keywords = ["adafruit"]

@@ -1,0 +1,9 @@
+patterns:
+  - pattern:
+      name: AWS API Key
+      regex: 'AKIA[0-9A-Z]{16}'
+      confidence: high
+  - pattern:
+      name: Stripe API Key
+      regex: 'sk_live_[0-9a-zA-Z]{24}'
+      confidence: high
