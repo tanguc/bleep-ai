@@ -1,0 +1,82 @@
+# IDs to exclude from normalization. Rationale in docs/analysis/CURATED-MANIFEST.md.
+# Use upstream source IDs (before namespace prefix is applied).
+excluded:
+  # gitleaks — DUPLICATE: nosey-parker wins on coverage/anchoring
+  - aws-access-token            # np.aws.1 wins; ABIA/ACCA prefixes merged into np.aws.1
+  - anthropic-api-key           # hardcodes api03; np.anthropic.1 is more future-proof
+  - github-pat                  # np.github.1 wins with \b anchoring
+  - github-oauth                # np.github.2 wins
+  - github-app-token            # np.github.3 wins
+  - github-refresh-token        # np.github.4 wins
+  - gitlab-pat                  # np.gitlab.1 wins with \b anchoring
+  - jwt                         # np.jwt.1 wins; semantically equivalent
+  - url-with-credentials        # np.http.1 wins
+  - slack-bot-token             # np.slack.2 wins with more precise length ranges
+  - postgres-connection-uri     # np.postgres.1 wins with (?x) readability
+  - mongodb-connection-string   # np.mongo.1 wins
+
+  # gitleaks — HIGH-FP: generic assignment patterns without distinctive prefix anchor
+  - generic-api-key             # assignment pattern; fires on any config discussion
+  - adafruit-api-key            # service-name-anchored assignment; IoT/embedded FP
+  - adobe-client-id             # assignment pattern without prefix anchor
+  - adobe-client-secret         # assignment pattern without prefix anchor
+  - curl-auth-header            # Authorization header value; too broad for LLM context
+  - curl-auth-user              # curl -u flag pattern; common in documentation
+
+  # nosey-parker — DUPLICATE: gitleaks wins on coverage
+  - np.openai.1                 # legacy format only; gitleaks openai-api-key broader
+  - np.stripe.1                 # live only; gitleaks stripe-access-token broader
+  - np.stripe.2                 # test only; gitleaks stripe-access-token broader
+  - np.pem.1                    # stricter char count misses some types; gitleaks wins
+
+  # nosey-parker — HIGH-FP
+  - np.generic.1                # secret + 32-64 hex fires on hash values in discussions
+  - np.generic.2                # assignment patterns for api_key/apikey/access_key; no anchor
+
+  # secrets-patterns-db — DUPLICATE
+  - AWS API Key                 # strict subset of np.aws.1
+  - AWS Access Key ID Value     # near-identical to np.aws.1, missing \b anchoring
+  - GitHub                      # subset of np.github.1
+  - Stripe API Key              # live sk_ only; gitleaks wins
+  - Slack Token                 # generic prefix; more precise rules win
+  - Private Key                 # RSA only; gitleaks private-key pattern covers all types
+
+  # secrets-patterns-db — UNSUPPORTED-REGEX (lookaheads/lookbehinds; RE2-incompatible)
+  - ssn - 3                     # three negative lookaheads; INCOMPATIBLE
+  - ssn_number                  # multiple negative lookaheads; INCOMPATIBLE
+  - phones                      # lookbehind + lookahead; INCOMPATIBLE; HIGH FP simplified
+  - credit_cards                # generic pattern with lookahead; use per-card-type patterns
+  - btc_addresses               # lookbehind + lookahead; INCOMPATIBLE; out of scope
+  - email - 3                   # [A-z] bug includes non-letter ASCII; emails pattern wins
+
+  # secrets-patterns-db — HIGH-FP or OUT-OF-SCOPE
+  - ipv4                        # HIGH FP in LLM context per FALSE-POSITIVE-ASSESSMENT.md
+  - ipv4_address                # same as ipv4 above
+  - ip_public                   # HIGH FP in LLM proxy context per D-02
+  - IBAN                        # lowercase variant; iban_numbers wins (uppercase, more precise)
+
+  # detect-secrets — PYTHON-SPECIFIC (negative lookaheads or Python-only validation logic)
+  - gitlab_token                # all 7 patterns use (?!\w) negative lookahead; RE2-incompatible
+  - ibm_cloud_iam               # (?![a-zA-Z0-9_-]) lookahead; hand-authored ha.secret.ibm-cloud-iam instead
+  - Keyword                     # generic keyword list + value detection; Python logic not ported; HIGH FP
+  - High Entropy Strings        # entropy-only detection; no pure regex equivalent
+
+  # detect-secrets — DUPLICATE
+  - OpenAI Token                # gitleaks openai-api-key wins
+  - Stripe Access Key           # live only; gitleaks wins
+  - Slack Token                 # gitleaks/nosey-parker win
+  - JWT                         # np.jwt.1 wins
+  - Private Key                 # gitleaks private-key covers all types
+  - Basic Auth                  # np.http.1 wins
+  - SendGrid                    # identical to gitleaks sendgrid-api-token
+  - Mailchimp                   # identical to gitleaks mailchimp-api-key
+  - pypi_token-prod             # identical to gitleaks pypi-upload-token
+  - Telegram                    # gitleaks wins with \b instead of line anchors
+  - Twilio                      # gitleaks equivalent
+  - Discord                     # gitleaks equivalent
+  - Artifactory                 # gitleaks wins with cleaner anchoring
+  - square_oauth                # gitleaks wins
+
+  # detect-secrets — HIGH-FP
+  - Cloudant assignment         # generic keyword assignment without prefix anchor
+  - Softlayer assignment        # generic keyword assignment; no prefix anchor; HIGH FP
