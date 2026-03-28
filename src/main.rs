@@ -4,7 +4,6 @@ mod hudsucker;
 mod logging;
 mod patterns;
 mod proxy;
-mod regex_patterns;
 mod request_logger;
 mod types;
 
