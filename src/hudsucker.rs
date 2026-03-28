@@ -8,7 +8,6 @@ use hudsucker::{
     tokio_tungstenite::tungstenite::Message,
     *,
 };
-use serde::Serialize;
 use std::{io::Read, net::SocketAddr, path::Path, sync::Arc};
 use tracing::*;
 

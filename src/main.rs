@@ -10,7 +10,6 @@ mod request_logger;
 mod types;
 
 use clap::Parser;
-use tracing::info;
 
 use crate::hudsucker::run_hudsucker;
 
