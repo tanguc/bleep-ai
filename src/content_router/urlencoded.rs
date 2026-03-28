@@ -20,7 +20,8 @@ pub fn handle(body: Bytes) -> Result<(Bytes, Vec<Redaction>), RouterError> {
 
     for (key, value) in pairs {
         let value_bytes = Bytes::copy_from_slice(value.as_bytes());
-        let matches = crate::detection::scan(&value_bytes);
+        // use scan_field: decoded form values are context-isolated
+        let matches = crate::detection::scan_field(&value_bytes);
         let replaced_value = if matches.is_empty() {
             value
         } else {

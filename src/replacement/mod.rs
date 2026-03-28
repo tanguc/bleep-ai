@@ -126,7 +126,10 @@ fn walk_json_value(value: &mut serde_json::Value, redactions: &mut Vec<Redaction
     match value {
         serde_json::Value::String(s) => {
             let bytes = Bytes::copy_from_slice(s.as_bytes());
-            let matches = crate::detection::scan(&bytes);
+            // use scan_field: individual JSON string values are context-isolated, so the
+            // combined pre-filter would reject them even when they contain secrets.
+            // scan_field applies per-rule matching without the combined AhoCorasick gate.
+            let matches = crate::detection::scan_field(&bytes);
             if !matches.is_empty() {
                 let (replaced, mut new_redactions) = apply(bytes, matches);
                 *s = String::from_utf8_lossy(&replaced).into_owned();

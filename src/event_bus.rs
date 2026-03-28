@@ -10,7 +10,7 @@ pub struct RedactedEntry {
     pub category: String,
     pub subcategory: String,
     pub severity: String,
-    /// substituted fake value — safe for TUI and event bus; original NOT sent here
+    /// fake value only — original value is never on the event bus (security invariant)
     pub fake_value: String,
 }
 
