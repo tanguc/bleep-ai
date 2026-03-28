@@ -1,3 +1,4 @@
+mod content_router;
 mod detection;
 mod event_bus;
 mod hudsucker;
@@ -50,8 +51,7 @@ async fn main() {
 
     tracing_subscriber::fmt::init();
 
-    // TODO(phase-5): pass _cli.min_confidence into proxy handler for detection::confidence_meets filter
-    run_hudsucker().await;
+    run_hudsucker(_cli.port, _cli.log_file.clone(), _cli.min_confidence.clone()).await;
 
     // let app_state = types::AppState {
     //     client: reqwest::Client::new(),

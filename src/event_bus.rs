@@ -8,8 +8,10 @@ use tokio::sync::broadcast;
 pub struct RedactedEntry {
     pub rule_id: String,
     pub category: String,
+    pub subcategory: String,
     pub severity: String,
-    pub matched_text: String,
+    /// fake value only — original value is never on the event bus (security invariant)
+    pub fake_value: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
