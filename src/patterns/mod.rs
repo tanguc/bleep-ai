@@ -42,16 +42,60 @@ pub static COMBINED: LazyLock<AhoCorasick> = LazyLock::new(|| {
 });
 
 /// compiled regex per rule, paired with Arc<NormalizedRule> for zero-copy sharing
+///
+/// uses the same size limits as build.rs validation (256 MB DFA) so that any regex
+/// that passed validation at compile time also compiles at runtime.
+/// POSIX (?# ... ) comments are stripped before compilation — combined.yaml may retain
+/// them in (?x) verbose patterns; Rust regex supports only # line comments in (?x) mode.
 pub static RULES: LazyLock<Vec<(Arc<NormalizedRule>, Regex)>> = LazyLock::new(|| {
     NORMALIZED_RULES
         .iter()
         .map(|r| {
-            let re = regex::bytes::Regex::new(&r.regex)
-                .expect("regex pre-validated by build.rs");
+            let cleaned = strip_posix_comments(&r.regex);
+            let re = regex::bytes::RegexBuilder::new(&cleaned)
+                .size_limit(256 * 1024 * 1024)
+                .dfa_size_limit(256 * 1024 * 1024)
+                .build()
+                .unwrap_or_else(|e| {
+                    panic!("regex compile failed for rule '{}': {}", r.id, e)
+                });
             (Arc::new(r.clone()), re)
         })
         .collect()
 });
+
+/// strip POSIX-style inline comments (?# ... ) from a regex string
+///
+/// the Rust regex crate does not support (?# ...) comment syntax — only (?x) # line comments.
+/// these appear in some NP patterns inside (?x) verbose blocks.
+fn strip_posix_comments(pattern: &str) -> String {
+    let mut result = String::with_capacity(pattern.len());
+    let bytes = pattern.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if i + 2 < bytes.len()
+            && bytes[i] == b'('
+            && bytes[i + 1] == b'?'
+            && bytes[i + 2] == b'#'
+        {
+            // skip until the closing ')'
+            i += 3;
+            let mut depth = 1;
+            while i < bytes.len() && depth > 0 {
+                if bytes[i] == b'(' {
+                    depth += 1;
+                } else if bytes[i] == b')' {
+                    depth -= 1;
+                }
+                i += 1;
+            }
+        } else {
+            result.push(bytes[i] as char);
+            i += 1;
+        }
+    }
+    result
+}
 
 pub fn get_rules() -> &'static Vec<(Arc<NormalizedRule>, Regex)> {
     &RULES

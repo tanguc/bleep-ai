@@ -1,3 +1,4 @@
+mod detection;
 mod event_bus;
 mod hudsucker;
 mod logging;
