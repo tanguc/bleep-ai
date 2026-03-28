@@ -1,5 +1,4 @@
 use flate2::read::GzDecoder;
-use futures_util::lock::Mutex;
 use http_body_util::BodyExt;
 use hudsucker::{
     certificate_authority::RcgenAuthority,
@@ -10,7 +9,7 @@ use hudsucker::{
     *,
 };
 use serde::Serialize;
-use std::{collections::HashMap, io::Read, net::SocketAddr, sync::Arc};
+use std::{io::Read, net::SocketAddr, sync::Arc};
 use tracing::*;
 
 use crate::event_bus;
@@ -60,12 +59,10 @@ async fn shutdown_signal() {
     info!("shutting down...");
 }
 
-// TODO(phase-5): replace Vec<serde_json::Value> with Vec<detection::Match> when detection is wired
-type RedactionMap = Arc<Mutex<HashMap<String, Vec<serde_json::Value>>>>;
-
 #[derive(Clone)]
 struct LogHandler {
-    redaction_map: RedactionMap,
+    log_file: Arc<String>,
+    min_confidence: Arc<String>,
 }
 
 impl HttpHandler for LogHandler {
@@ -152,11 +149,11 @@ impl WebSocketHandler for LogHandler {
     }
 }
 
-pub async fn run_hudsucker() {
+pub async fn run_hudsucker(port: u16, log_file: String, min_confidence: String) {
     request_logger::init();
     event_bus::init();
     event_bus::start_tcp_server();
-    println!("starting hudsucker proxy on :9190");
+    println!("starting hudsucker proxy on :{port}");
 
     let key_pair = KeyPair::from_pem(include_str!("key.pem")).expect("failed to parse private key");
     let issuer = Issuer::from_ca_cert_pem(include_str!("cert.pem"), key_pair)
@@ -164,11 +161,12 @@ pub async fn run_hudsucker() {
     let ca = RcgenAuthority::new(issuer, 1_000, aws_lc_rs::default_provider());
 
     let handler = LogHandler {
-        redaction_map: Arc::new(Mutex::new(HashMap::new())),
+        log_file: Arc::new(log_file),
+        min_confidence: Arc::new(min_confidence),
     };
 
     let proxy = Proxy::builder()
-        .with_addr(SocketAddr::from(([127, 0, 0, 1], 9190)))
+        .with_addr(SocketAddr::from(([127, 0, 0, 1], port)))
         .with_ca(ca)
         .with_rustls_connector(aws_lc_rs::default_provider())
         .with_http_handler(handler.clone())
@@ -179,15 +177,5 @@ pub async fn run_hudsucker() {
 
     if let Err(e) = proxy.start().await {
         error!("{}", e);
-    }
-
-    let map = handler.redaction_map.lock().await;
-    if !map.is_empty() {
-        let f = std::fs::File::create("/tmp/redaction_map.json").expect("failed to create file");
-        serde_json::to_writer_pretty(f, &*map).unwrap();
-        info!(
-            "saved {} redaction entries to /tmp/redaction_map.json",
-            map.len()
-        );
     }
 }
