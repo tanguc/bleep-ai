@@ -290,6 +290,12 @@ impl WebSocketHandler for LogHandler {
 }
 
 pub async fn run_hudsucker(port: u16, log_file: String, min_confidence: String) {
+    // force pattern compilation at startup, not on first request
+    let rule_count = crate::patterns::get_normalized_rules().len();
+    let _combined = crate::patterns::get_combined();
+    let _rules = crate::patterns::get_rules();
+    println!("compiled {rule_count} detection rules");
+
     request_logger::init();
     event_bus::init();
     event_bus::start_tcp_server();
