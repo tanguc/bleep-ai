@@ -1,19 +1,24 @@
-# Build Pipeline Spec (build.rs)
+# Rule Pipeline Spec
 
-**Purpose:** Defines how `build.rs` normalizes raw vendor pattern files into a single `rules/combined.yaml` that is embedded into the binary at compile time via `include_str!`. This runs at `cargo build` time, before any Rust source compiles.
+> **Note (April 2026):** The pipeline was originally implemented as `build.rs`
+> but was refactored into `src/rule_pipeline.rs` + `src/bin/build-rules.rs`.
+> See `docs/RULE-PIPELINE.md` for the current developer workflow. This document
+> still describes the algorithmic spec, which is unchanged.
+
+**Purpose:** Defines how the rule pipeline normalizes raw vendor pattern files into a single `rules/combined.yaml` that is embedded into the binary at compile time via `include_str!`. The pipeline is now an explicit binary you invoke when patterns change (`cargo run --bin build-rules`), not an automatic step on every `cargo build`.
 
 ---
 
 ## 1. Purpose and Scope
 
-`build.rs` runs before any Rust source is compiled. It:
+The pipeline (now `src/rule_pipeline.rs::run()`):
 1. Reads raw vendor files (gitleaks TOML, secrets-patterns-db YAML, Nosey Parker YAML, hand-authored YAML)
 2. Normalizes each into `Vec<NormalizedRule>` matching the schema in `docs/schema/INTERNAL-SCHEMA.md`
 3. Deduplicates by `id`
 4. Validates each rule (regex compilation, required fields, valid enum values)
-5. Writes `rules/combined.yaml`
+5. Writes `rules/combined.yaml` (now committed to git, was previously gitignored)
 
-`combined.yaml` is then consumed by `include_str!("../rules/combined.yaml")` in `src/patterns/mod.rs`, embedding the pattern library into the binary. No runtime file I/O.
+`combined.yaml` is consumed by `include_str!("../../rules/combined.yaml")` in `src/patterns/mod.rs`, embedding the pattern library into the binary. No runtime file I/O.
 
 ---
 
