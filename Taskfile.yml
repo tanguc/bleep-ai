@@ -1,0 +1,86 @@
+# https://taskfile.dev
+version: "3"
+
+vars:
+  BIN: bleep-gateway
+  TUI: bleep-tui
+
+tasks:
+  default:
+    desc: list available tasks
+    silent: true
+    cmds:
+      - task --list
+
+  build:
+    desc: build release binary
+    sources:
+      - src/**/*.rs
+      - Cargo.toml
+    generates:
+      - target/release/{{.BIN}}
+    cmds:
+      - cargo build --release
+
+  rules:
+    desc: regenerate rules/combined.yaml from vendor sources
+    sources:
+      - rules/vendor/**/*
+      - rules/EXCLUSIONS.yaml
+      - src/rule_pipeline.rs
+    generates:
+      - rules/combined.yaml
+      - rules/patterns-test-fixtures.yaml
+    cmds:
+      - cargo run --bin build-rules
+
+  rules:dev:
+    desc: regenerate rules with a small subset (fast proxy startup for iteration)
+    cmds:
+      - cargo run --bin build-rules -- --limit 30
+
+  run:
+    desc: run gateway (debug build)
+    env:
+      RUST_LOG: debug
+      BLEEP_LOG_REQUESTS: "1"
+      BLEEP_LOG_PATH: /tmp
+    cmds:
+      - cargo run --bin {{.BIN}} -- {{.CLI_ARGS}}
+
+  run:release:
+    desc: run gateway (release build)
+    env:
+      RUST_LOG: info
+    cmds:
+      - cargo run --release --bin {{.BIN}} -- {{.CLI_ARGS}}
+
+  tui:
+    desc: run the TUI monitor
+    cmds:
+      - cargo run --bin {{.TUI}}
+
+  test:
+    desc: run all tests
+    cmds:
+      - cargo test
+
+  lint:
+    desc: run clippy and fmt check
+    cmds:
+      - cargo clippy -- -D warnings
+      - cargo fmt --check
+
+  fmt:
+    desc: format code
+    cmds:
+      - cargo fmt
+
+  check:
+    desc: lint + test
+    deps: [ lint, test ]
+
+  clean:
+    desc: remove build artifacts
+    cmds:
+      - cargo clean

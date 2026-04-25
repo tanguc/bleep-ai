@@ -1,8 +1,46 @@
-// build.rs — compile-time pattern normalization pipeline
-// runs before any Rust source is compiled via `cargo build`
+//! Rule normalization pipeline.
+//!
+//! Reads vendor sources from `rules/vendor/`, normalizes to the internal schema,
+//! deduplicates, validates, and writes `rules/combined.yaml` +
+//! `rules/patterns-test-fixtures.yaml`.
+//!
+//! Run via the `build-rules` binary (`cargo run --bin build-rules`) or directly via
+//! [`run`].
+
+#![allow(dead_code)]
+
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
+
+/// Options controlling the pipeline run.
+#[derive(Debug, Default, Clone)]
+pub struct RunOptions {
+    /// If `Some(n)`, truncate the final ruleset to `n` rules (dev iteration).
+    pub max_rules: Option<usize>,
+    /// If `true`, suppress the `eprintln!` progress output.
+    pub quiet: bool,
+}
+
+/// Summary of what the pipeline produced.
+#[derive(Debug, Clone)]
+pub struct RunResult {
+    pub gitleaks_rules: usize,
+    pub spdb_rules: usize,
+    pub np_rules: usize,
+    pub ha_rules: usize,
+    pub total_rules: usize,
+    pub combined_path: String,
+    pub fixtures_path: String,
+}
+
+macro_rules! log_progress {
+    ($quiet:expr, $($arg:tt)*) => {
+        if !$quiet {
+            eprintln!($($arg)*);
+        }
+    };
+}
 
 // ── vendor parsing structs ─────────────────────────────────────────────────────
 
@@ -156,43 +194,92 @@ fn slugify(s: &str) -> String {
 fn infer_confidence_gitleaks(regex: &str) -> &'static str {
     // tier 1 HIGH: prefix-anchored — starts with or contains a known vendor-specific literal
     let high_prefixes = [
-        "AKIA", "AGPA", "AIDA", "AROA", "AIPA", "ANPA", "ANVA", "ASIA", "A3T",
-        "ghp_", "gho_", "ghu_", "ghs_", "ghr_", "github_pat_",
-        "glpat-", "glptt-", "GR1348941",
-        "sk-ant-api", "sk-ant-admin",
-        "sk_test", "sk_live", "sk_prod", "rk_test", "rk_live", "rk_prod",
-        "SG.", "xoxb-", "xapp-", "xoxe.",
-        "ops_eyJ", "AGE-SECRET-KEY-1", "A3-",
+        "AKIA",
+        "AGPA",
+        "AIDA",
+        "AROA",
+        "AIPA",
+        "ANPA",
+        "ANVA",
+        "ASIA",
+        "A3T",
+        "ghp_",
+        "gho_",
+        "ghu_",
+        "ghs_",
+        "ghr_",
+        "github_pat_",
+        "glpat-",
+        "glptt-",
+        "GR1348941",
+        "sk-ant-api",
+        "sk-ant-admin",
+        "sk_test",
+        "sk_live",
+        "sk_prod",
+        "rk_test",
+        "rk_live",
+        "rk_prod",
+        "SG.",
+        "xoxb-",
+        "xapp-",
+        "xoxe.",
+        "ops_eyJ",
+        "AGE-SECRET-KEY-1",
+        "A3-",
         "eyJ",
-        "pypi-AgEI", "pypi-AgEN",
+        "pypi-AgEI",
+        "pypi-AgEN",
         "npm_",
         "dapi",
         "dp.pt.",
-        "pscale_tkn_", "pscale_oauth_", "pscale_pw_",
+        "pscale_tkn_",
+        "pscale_oauth_",
+        "pscale_pw_",
         "PMAK-",
-        "NRAK-", "NRJS-",
+        "NRAK-",
+        "NRJS-",
         "AIza",
-        "glc_", "glsa_",
-        "hf_", "api_org_",
+        "glc_",
+        "glsa_",
+        "hf_",
+        "api_org_",
         "dop_v1_",
         "LTAI",
         "CLOJARS_",
         "dnkey-",
         "AKC",
-        "fo1_", "fio-u-",
-        "FLWSECK", "FLWPUBK",
-        "pplx-", "pnu_", "sgp_",
-        "shpat_", "shpca_", "shppa_", "shpss_",
+        "fo1_",
+        "fio-u-",
+        "FLWSECK",
+        "FLWPUBK",
+        "pplx-",
+        "pnu_",
+        "sgp_",
+        "shpat_",
+        "shpca_",
+        "shppa_",
+        "shpss_",
         "squ_",
-        "tfp_", "rdme_", "rubygems_",
-        "tk-us-", "ico-",
+        "tfp_",
+        "rdme_",
+        "rubygems_",
+        "tk-us-",
+        "ico-",
         "lin_api_",
-        "hubspot", "pat-",
-        "EZAK", "EZTK",
+        "hubspot",
+        "pat-",
+        "EZAK",
+        "EZTK",
         "xkeysib-",
-        "hvs.", "b.",
-        "yandex", "y1_", "AQVN", "YCA",
-        "xoxp-", "xoxa-",
+        "hvs.",
+        "b.",
+        "yandex",
+        "y1_",
+        "AQVN",
+        "YCA",
+        "xoxp-",
+        "xoxa-",
         "ACC_",
         "acc_",
     ];
@@ -202,7 +289,8 @@ fn infer_confidence_gitleaks(regex: &str) -> &'static str {
         }
     }
     // tier 2 MEDIUM: context-anchored — contains assignment operators or keyword structure
-    if regex.contains("(?i)") || regex.contains("=") || regex.contains(":") || regex.contains("=>") {
+    if regex.contains("(?i)") || regex.contains("=") || regex.contains(":") || regex.contains("=>")
+    {
         return "medium";
     }
     // default medium (log warning is handled by caller)
@@ -256,7 +344,11 @@ fn derive_replacement_type(category: &str, subcategory: &str) -> &'static str {
 
 /// derive severity from confidence
 fn derive_severity(confidence: &str) -> &'static str {
-    if confidence == "high" { "high" } else { "medium" }
+    if confidence == "high" {
+        "high"
+    } else {
+        "medium"
+    }
 }
 
 /// lookup (category, subcategory) for a gitleaks rule id
@@ -495,7 +587,10 @@ fn gl_subcategory(id: &str) -> (&'static str, &'static str) {
         "ibm_cos_hmac" => ("secret", "generic"),
         "Softlayer URL" => ("secret", "generic"),
         _ => {
-            eprintln!("build.rs: warn: unknown gitleaks id '{}' — defaulting to (secret, generic)", id);
+            eprintln!(
+                "rule_pipeline: warn: unknown gitleaks id '{}' — defaulting to (secret, generic)",
+                id
+            );
             ("secret", "generic")
         }
     }
@@ -523,11 +618,19 @@ fn np_subcategory(id: &str) -> (&'static str, &'static str) {
         id if id.starts_with("np.jwt.") => ("secret", "jwt"),
         id if id.starts_with("np.stripe.") => ("secret", "stripe"),
         id if id.starts_with("np.openai.") => ("secret", "openai"),
-        id if id.starts_with("np.postgres.") || id.starts_with("np.mongo.") || id.starts_with("np.odbc.") => ("secret", "db-conn"),
+        id if id.starts_with("np.postgres.")
+            || id.starts_with("np.mongo.")
+            || id.starts_with("np.odbc.") =>
+        {
+            ("secret", "db-conn")
+        }
         id if id.starts_with("np.http.") => ("infra", "url-cred"),
         id if id.starts_with("np.pem.") => ("secret", "private-key"),
         _ => {
-            eprintln!("build.rs: warn: unknown NP id '{}' — defaulting to (secret, generic)", id);
+            eprintln!(
+                "rule_pipeline: warn: unknown NP id '{}' — defaulting to (secret, generic)",
+                id
+            );
             ("secret", "generic")
         }
     }
@@ -546,10 +649,14 @@ fn spdb_subcategory(name: &str, category: &str) -> &'static str {
         if name_lower.contains("phone") {
             return "phone";
         }
-        if name_lower.contains("visa") || name_lower.contains("mastercard")
-            || name_lower.contains("amex") || name_lower.contains("american express")
-            || name_lower.contains("discover") || name_lower.contains("jcb")
-            || name_lower.contains("credit card") || name_lower.contains("credit-card")
+        if name_lower.contains("visa")
+            || name_lower.contains("mastercard")
+            || name_lower.contains("amex")
+            || name_lower.contains("american express")
+            || name_lower.contains("discover")
+            || name_lower.contains("jcb")
+            || name_lower.contains("credit card")
+            || name_lower.contains("credit-card")
         {
             return "cc";
         }
@@ -706,7 +813,9 @@ fn parse_np_file(content: &str, file_path: &str) -> Vec<NpRule> {
                 // block scalar: next indented lines are the pattern
                 let base_indent = line.len() - line.trim_start().len();
                 block_indent = base_indent + 2; // block scalar body is indented 2 more
-                state = Field::PatternBlock { indent: block_indent };
+                state = Field::PatternBlock {
+                    indent: block_indent,
+                };
                 if let Some(ref mut rule) = current {
                     rule.pattern.clear();
                 }
@@ -747,7 +856,8 @@ fn parse_np_file(content: &str, file_path: &str) -> Vec<NpRule> {
                     let val = trimmed["- ".len()..].trim();
                     if val != "|" && val.len() <= 500 {
                         if let Some(ref mut rule) = current {
-                            rule.negative_examples.push(unquote_yaml_scalar(val).to_string());
+                            rule.negative_examples
+                                .push(unquote_yaml_scalar(val).to_string());
                         }
                     }
                 }
@@ -786,8 +896,16 @@ fn parse_spdb_file(content: &str, file_path: &str) -> Vec<SpdbPattern> {
         let trimmed = line.trim();
         if trimmed.starts_with("name:") {
             // flush previous pattern if complete
-            if let (Some(name), Some(regex), Some(confidence)) = (current_name.take(), current_regex.take(), current_confidence.take()) {
-                patterns.push(SpdbPattern { name, regex, confidence });
+            if let (Some(name), Some(regex), Some(confidence)) = (
+                current_name.take(),
+                current_regex.take(),
+                current_confidence.take(),
+            ) {
+                patterns.push(SpdbPattern {
+                    name,
+                    regex,
+                    confidence,
+                });
             }
             let val = trimmed["name:".len()..].trim();
             current_name = Some(unquote_yaml_scalar(val).to_string());
@@ -800,12 +918,21 @@ fn parse_spdb_file(content: &str, file_path: &str) -> Vec<SpdbPattern> {
         }
     }
     // flush last pattern
-    if let (Some(name), Some(regex), Some(confidence)) = (current_name, current_regex, current_confidence) {
-        patterns.push(SpdbPattern { name, regex, confidence });
+    if let (Some(name), Some(regex), Some(confidence)) =
+        (current_name, current_regex, current_confidence)
+    {
+        patterns.push(SpdbPattern {
+            name,
+            regex,
+            confidence,
+        });
     }
 
     if patterns.is_empty() {
-        panic!("build.rs: parse_spdb_file: no patterns found in {} — file may be empty or malformed", file_path);
+        panic!(
+            "rule_pipeline: parse_spdb_file: no patterns found in {} — file may be empty or malformed",
+            file_path
+        );
     }
     patterns
 }
@@ -819,32 +946,34 @@ fn unquote_yaml_scalar(s: &str) -> &str {
     }
 }
 
-// ── main ───────────────────────────────────────────────────────────────────────
-
-fn main() {
-    // declare rerun triggers FIRST so cargo knows about them even if build fails
-    println!("cargo:rerun-if-changed=rules/sensitive-patterns.yaml");
-    println!("cargo:rerun-if-changed=rules/EXCLUSIONS.yaml");
-    println!("cargo:rerun-if-changed=rules/vendor/gitleaks/gitleaks.toml");
-    println!("cargo:rerun-if-changed=rules/vendor/secrets-patterns-db/rules-stable.yml");
-    println!("cargo:rerun-if-changed=rules/vendor/secrets-patterns-db/pii-stable.yml");
-    println!("cargo:rerun-if-changed=rules/vendor/hand-authored/patterns.yaml");
-    // NP directory trigger (per-file triggers added during parse loop)
-    println!("cargo:rerun-if-changed=rules/vendor/nosey-parker/rules");
+// ── run ────────────────────────────────────────────────────────────────────────
+/// Run the rule normalization pipeline.
+///
+/// Reads vendor sources, normalizes, dedups, validates, and writes
+/// `rules/combined.yaml` + `rules/patterns-test-fixtures.yaml`.
+///
+/// Panics on any malformed input or invalid regex (zero-tolerance per D-04).
+#[allow(clippy::too_many_lines)]
+pub fn run(opts: &RunOptions) -> RunResult {
+    let quiet = opts.quiet;
 
     // ── step 1: load exclusions ────────────────────────────────────────────────
     let exclusions_raw = fs::read_to_string("rules/EXCLUSIONS.yaml")
-        .unwrap_or_else(|e| panic!("build.rs: cannot read rules/EXCLUSIONS.yaml: {}", e));
+        .unwrap_or_else(|e| panic!("rule_pipeline: cannot read rules/EXCLUSIONS.yaml: {}", e));
     let exclusions: Exclusions = serde_yml::from_str(&exclusions_raw)
-        .unwrap_or_else(|e| panic!("build.rs: malformed rules/EXCLUSIONS.yaml: {}", e));
+        .unwrap_or_else(|e| panic!("rule_pipeline: malformed rules/EXCLUSIONS.yaml: {}", e));
     let excluded_ids: HashSet<String> = exclusions.excluded.into_iter().collect();
-    eprintln!("build.rs: loaded {} exclusions", excluded_ids.len());
+    log_progress!(quiet, "rule_pipeline: loaded {} exclusions", excluded_ids.len());
 
     // ── step 2: parse gitleaks TOML ───────────────────────────────────────────
-    let gl_raw = fs::read_to_string("rules/vendor/gitleaks/gitleaks.toml")
-        .unwrap_or_else(|e| panic!("build.rs: cannot read rules/vendor/gitleaks/gitleaks.toml: {}", e));
+    let gl_raw = fs::read_to_string("rules/vendor/gitleaks/gitleaks.toml").unwrap_or_else(|e| {
+        panic!(
+            "rule_pipeline: cannot read rules/vendor/gitleaks/gitleaks.toml: {}",
+            e
+        )
+    });
     let gl_file: GitleaksFile = toml::from_str(&gl_raw)
-        .unwrap_or_else(|e| panic!("build.rs: malformed gitleaks.toml: {}", e));
+        .unwrap_or_else(|e| panic!("rule_pipeline: malformed gitleaks.toml: {}", e));
 
     let mut gl_rules: Vec<NormalizedRule> = Vec::new();
     for rule in gl_file.rules {
@@ -855,7 +984,10 @@ fn main() {
         let regex = match rule.regex {
             Some(r) => r,
             None => {
-                eprintln!("build.rs: skipping gitleaks rule {} — no regex (path-only rule)", rule.id);
+                log_progress!(quiet,
+                    "rule_pipeline: skipping gitleaks rule {} — no regex (path-only rule)",
+                    rule.id
+                );
                 continue;
             }
         };
@@ -880,7 +1012,10 @@ fn main() {
             severity: severity.to_string(),
         });
     }
-    eprintln!("build.rs: gitleaks parsed {} included rules", gl_rules.len());
+    log_progress!(quiet,
+        "rule_pipeline: gitleaks parsed {} included rules",
+        gl_rules.len()
+    );
 
     // ── step 3: parse secrets-patterns-db YAML ────────────────────────────────
     // uses hand-rolled line parser (serde_yml / libyml panics on large files with long scalars)
@@ -902,13 +1037,14 @@ fn main() {
         "Discover",
         "JCB",
         "iban_numbers",
-    ].iter().cloned().collect();
+    ]
+    .iter()
+    .cloned()
+    .collect();
 
-    for (path, category) in &[
-        ("rules/vendor/secrets-patterns-db/pii-stable.yml", "pii"),
-    ] {
+    for (path, category) in &[("rules/vendor/secrets-patterns-db/pii-stable.yml", "pii")] {
         let raw = fs::read_to_string(path)
-            .unwrap_or_else(|e| panic!("build.rs: cannot read {}: {}", path, e));
+            .unwrap_or_else(|e| panic!("rule_pipeline: cannot read {}: {}", path, e));
         let patterns = parse_spdb_file(&raw, path);
 
         for p in patterns {
@@ -945,14 +1081,21 @@ fn main() {
                 keywords: vec![],
                 entropy: None,
                 tags: vec![],
-                checksum_type: if subcategory == "cc" { Some("luhn".to_string()) } else { None },
+                checksum_type: if subcategory == "cc" {
+                    Some("luhn".to_string())
+                } else {
+                    None
+                },
                 replacement_type: replacement_type.to_string(),
                 description: String::new(),
                 severity: severity.to_string(),
             });
         }
     }
-    eprintln!("build.rs: secrets-patterns-db parsed {} included rules", spdb_rules.len());
+    log_progress!(quiet,
+        "rule_pipeline: secrets-patterns-db parsed {} included rules",
+        spdb_rules.len()
+    );
 
     // ── step 4: parse Nosey Parker YAML ───────────────────────────────────────
     // uses custom line-based parser (serde_yml / libyml panics on NP files with long example lines)
@@ -961,20 +1104,23 @@ fn main() {
     let mut test_fixtures: Vec<TestFixture> = Vec::new();
 
     let mut np_entries: Vec<_> = fs::read_dir(np_rules_dir)
-        .unwrap_or_else(|e| panic!("build.rs: cannot read NP rules dir: {}", e))
+        .unwrap_or_else(|e| panic!("rule_pipeline: cannot read NP rules dir: {}", e))
         .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().map(|ext| ext == "yml").unwrap_or(false))
+        .filter(|e| {
+            e.path()
+                .extension()
+                .map(|ext| ext == "yml")
+                .unwrap_or(false)
+        })
         .collect();
     // sort for deterministic ordering
     np_entries.sort_by_key(|e| e.path());
 
     for entry in &np_entries {
         let path = entry.path();
-        // per-file rerun trigger
-        println!("cargo:rerun-if-changed={}", path.display());
 
         let raw = fs::read_to_string(&path)
-            .unwrap_or_else(|e| panic!("build.rs: cannot read NP file {:?}: {}", path, e));
+            .unwrap_or_else(|e| panic!("rule_pipeline: cannot read NP file {:?}: {}", path, e));
         let np_file_rules = parse_np_file(&raw, &path.to_string_lossy());
 
         for rule in np_file_rules {
@@ -1016,20 +1162,38 @@ fn main() {
             });
         }
     }
-    eprintln!("build.rs: nosey-parker parsed {} included rules", np_rules.len());
+    log_progress!(quiet,
+        "rule_pipeline: nosey-parker parsed {} included rules",
+        np_rules.len()
+    );
 
     // write test fixtures file (overwrite each build for consistency)
-    let fixtures_file = TestFixturesFile { fixtures: test_fixtures };
+    let fixtures_file = TestFixturesFile {
+        fixtures: test_fixtures,
+    };
     let fixtures_yaml = serde_yml::to_string(&fixtures_file)
-        .unwrap_or_else(|e| panic!("build.rs: failed to serialize test fixtures: {}", e));
-    fs::write("rules/patterns-test-fixtures.yaml", fixtures_yaml)
-        .unwrap_or_else(|e| panic!("build.rs: failed to write rules/patterns-test-fixtures.yaml: {}", e));
+        .unwrap_or_else(|e| panic!("rule_pipeline: failed to serialize test fixtures: {}", e));
+    fs::write("rules/patterns-test-fixtures.yaml", fixtures_yaml).unwrap_or_else(|e| {
+        panic!(
+            "rule_pipeline: failed to write rules/patterns-test-fixtures.yaml: {}",
+            e
+        )
+    });
 
     // ── step 5: parse hand-authored patterns ──────────────────────────────────
-    let ha_raw = fs::read_to_string("rules/vendor/hand-authored/patterns.yaml")
-        .unwrap_or_else(|e| panic!("build.rs: cannot read rules/vendor/hand-authored/patterns.yaml: {}", e));
-    let ha_file: HandAuthoredFile = serde_yml::from_str(&ha_raw)
-        .unwrap_or_else(|e| panic!("build.rs: malformed rules/vendor/hand-authored/patterns.yaml: {}", e));
+    let ha_raw =
+        fs::read_to_string("rules/vendor/hand-authored/patterns.yaml").unwrap_or_else(|e| {
+            panic!(
+                "rule_pipeline: cannot read rules/vendor/hand-authored/patterns.yaml: {}",
+                e
+            )
+        });
+    let ha_file: HandAuthoredFile = serde_yml::from_str(&ha_raw).unwrap_or_else(|e| {
+        panic!(
+            "rule_pipeline: malformed rules/vendor/hand-authored/patterns.yaml: {}",
+            e
+        )
+    });
     let mut ha_rules: Vec<NormalizedRule> = ha_file.rules;
 
     // ensure all ha.* ids are prefixed
@@ -1049,31 +1213,48 @@ fn main() {
     ];
     for req in &required_ha {
         if !ha_rules.iter().any(|r| r.id == *req) {
-            panic!("build.rs: required hand-authored rule {} is missing", req);
+            panic!("rule_pipeline: required hand-authored rule {} is missing", req);
         }
     }
-    eprintln!("build.rs: hand-authored parsed {} rules", ha_rules.len());
+    log_progress!(quiet, "rule_pipeline: hand-authored parsed {} rules", ha_rules.len());
 
     // ── step 6: merge and deduplicate ─────────────────────────────────────────
     // insert in reverse priority order: spdb first (lowest), then gl, then np, then ha (highest)
     let mut merged: HashMap<String, NormalizedRule> = HashMap::new();
-    for rule in spdb_rules.iter().chain(gl_rules.iter()).chain(np_rules.iter()).chain(ha_rules.iter()) {
+    for rule in spdb_rules
+        .iter()
+        .chain(gl_rules.iter())
+        .chain(np_rules.iter())
+        .chain(ha_rules.iter())
+    {
         merged.insert(rule.id.clone(), rule.clone());
     }
     let mut final_rules: Vec<NormalizedRule> = merged.into_values().collect();
     final_rules.sort_by(|a, b| a.id.cmp(&b.id));
-    eprintln!("build.rs: {} rules after merge+dedup", final_rules.len());
+    log_progress!(quiet, "rule_pipeline: {} rules after merge+dedup", final_rules.len());
 
     if final_rules.is_empty() {
-        panic!("build.rs: no rules after normalization — normalization pipeline failed");
+        panic!("rule_pipeline: no rules after normalization — normalization pipeline failed");
     }
 
     // ── step 7: validate each rule ────────────────────────────────────────────
     let valid_replacement_types = [
-        "faker_email", "faker_phone", "faker_ssn", "faker_cc_luhn",
-        "faker_iban", "faker_uuid", "faker_ipv4", "faker_aws_key", "faker_github_pat",
-        "faker_jwt", "faker_api_key", "faker_db_conn", "faker_url_cred",
-        "fpe_numeric", "generic_random", "passthrough",
+        "faker_email",
+        "faker_phone",
+        "faker_ssn",
+        "faker_cc_luhn",
+        "faker_iban",
+        "faker_uuid",
+        "faker_ipv4",
+        "faker_aws_key",
+        "faker_github_pat",
+        "faker_jwt",
+        "faker_api_key",
+        "faker_db_conn",
+        "faker_url_cred",
+        "fpe_numeric",
+        "generic_random",
+        "passthrough",
     ];
     let valid_categories = ["secret", "pii", "infra"];
 
@@ -1082,26 +1263,29 @@ fn main() {
         // id format
         assert!(
             !rule.id.is_empty() && !rule.id.contains(char::is_whitespace),
-            "build.rs: rule has invalid id (empty or contains whitespace): {:?}",
+            "rule_pipeline: rule has invalid id (empty or contains whitespace): {:?}",
             rule.id
         );
         // no duplicate ids after dedup (defensive)
         assert!(
             seen_ids.insert(rule.id.as_str()),
-            "build.rs: duplicate id after dedup: {}",
+            "rule_pipeline: duplicate id after dedup: {}",
             rule.id
         );
         // category
         assert!(
             valid_categories.contains(&rule.category.as_str()),
-            "build.rs: rule {} has invalid category '{}' (must be secret|pii|infra)",
-            rule.id, rule.category
+            "rule_pipeline: rule {} has invalid category '{}' (must be secret|pii|infra)",
+            rule.id,
+            rule.category
         );
         // replacement_type
         assert!(
             valid_replacement_types.contains(&rule.replacement_type.as_str()),
-            "build.rs: rule {} has invalid replacement_type '{}'. Valid values: {:?}",
-            rule.id, rule.replacement_type, valid_replacement_types
+            "rule_pipeline: rule {} has invalid replacement_type '{}'. Valid values: {:?}",
+            rule.id,
+            rule.replacement_type,
+            valid_replacement_types
         );
         // regex compilation — strip (?# ...) POSIX comments unsupported by Rust regex crate
         // then use 256MB size limit to allow complex patterns (e.g. [\w-]{50,1000})
@@ -1110,19 +1294,19 @@ fn main() {
             .size_limit(256 * 1024 * 1024)
             .dfa_size_limit(256 * 1024 * 1024)
             .build()
-            .unwrap_or_else(|e| panic!(
-                "build.rs: invalid regex in rule {}: {}",
-                rule.id, e
-            ));
+            .unwrap_or_else(|e| panic!("rule_pipeline: invalid regex in rule {}: {}", rule.id, e));
         // warn if secret/pii rule has no keywords
         if (rule.category == "secret" || rule.category == "pii") && rule.keywords.is_empty() {
-            eprintln!("build.rs: warn: rule {} ({}) has no keywords — regex runs on every body that passes combined pre-filter", rule.id, rule.category);
+            log_progress!(quiet,
+                "rule_pipeline: warn: rule {} ({}) has no keywords — regex runs on every body that passes combined pre-filter",
+                rule.id, rule.category
+            );
         }
     }
-    eprintln!("build.rs: validated {} rules", final_rules.len());
+    log_progress!(quiet, "rule_pipeline: validated {} rules", final_rules.len());
 
     // ── step 8: write combined.yaml ───────────────────────────────────────────
-    let attribution = "# This file is generated by build.rs. DO NOT EDIT MANUALLY.\n\
+    let attribution = "# This file is generated by `cargo run --bin build-rules`. DO NOT EDIT MANUALLY.\n\
         # See rules/vendor/ for upstream sources.\n\
         #\n\
         # Attribution:\n\
@@ -1131,34 +1315,34 @@ fn main() {
         #   Attribution: Mazin Ahmed / secrets-patterns-db contributors\n\
         #   See: rules/vendor/secrets-patterns-db/LICENSE\n";
 
-    let combined = CombinedFile { rules: &final_rules };
+    if let Some(n) = opts.max_rules {
+        log_progress!(quiet, "rule_pipeline: applying max_rules limit of {} rules", n);
+        final_rules.truncate(n);
+    }
+
+    let combined = CombinedFile {
+        rules: &final_rules,
+    };
     let yaml = serde_yml::to_string(&combined)
-        .unwrap_or_else(|e| panic!("build.rs: failed to serialize combined.yaml: {}", e));
-    fs::write("rules/combined.yaml", format!("{}{}", attribution, yaml))
-        .unwrap_or_else(|e| panic!("build.rs: failed to write rules/combined.yaml: {}", e));
+        .unwrap_or_else(|e| panic!("rule_pipeline: failed to serialize combined.yaml: {}", e));
+    let combined_path = "rules/combined.yaml";
+    fs::write(combined_path, format!("{}{}", attribution, yaml))
+        .unwrap_or_else(|e| panic!("rule_pipeline: failed to write rules/combined.yaml: {}", e));
 
-    eprintln!("build.rs: wrote rules/combined.yaml with {} rules", final_rules.len());
+    log_progress!(quiet,
+        "rule_pipeline: wrote {} with {} rules",
+        combined_path,
+        final_rules.len()
+    );
 
-    // ── step 9: update .gitignore ─────────────────────────────────────────────
-    let gitignore_path = ".gitignore";
-    let current = fs::read_to_string(gitignore_path).unwrap_or_default();
-    let mut updated = current.clone();
-    if !current.contains("rules/combined.yaml") {
-        if !updated.ends_with('\n') && !updated.is_empty() {
-            updated.push('\n');
-        }
-        updated.push_str("rules/combined.yaml\n");
-    }
-    if !current.contains("rules/patterns-test-fixtures.yaml") {
-        if !updated.ends_with('\n') && !updated.is_empty() {
-            updated.push('\n');
-        }
-        updated.push_str("rules/patterns-test-fixtures.yaml\n");
-    }
-    if updated != current {
-        fs::write(gitignore_path, &updated)
-            .unwrap_or_else(|e| panic!("build.rs: failed to update .gitignore: {}", e));
-        eprintln!("build.rs: updated .gitignore");
+    RunResult {
+        gitleaks_rules: gl_rules.len(),
+        spdb_rules: spdb_rules.len(),
+        np_rules: np_rules.len(),
+        ha_rules: ha_rules.len(),
+        total_rules: final_rules.len(),
+        combined_path: combined_path.to_string(),
+        fixtures_path: "rules/patterns-test-fixtures.yaml".to_string(),
     }
 }
 
@@ -1175,16 +1359,22 @@ mod tests {
     #[test]
     fn test_slugify() {
         assert_eq!(slugify("AWS API Key"), "aws-api-key");
-        assert_eq!(slugify("U.S. Phone Number"), "us-phone-number");
+        // dots become hyphens (non-alphanumeric collapses)
+        assert_eq!(slugify("U.S. Phone Number"), "u-s-phone-number");
         assert_eq!(slugify("Stripe API Key"), "stripe-api-key");
         assert_eq!(slugify("ssn_number - 3"), "ssn-number-3");
     }
 
     #[test]
     fn test_gitleaks_confidence() {
-        // prefix-anchored: contains known vendor literal "sk_test"
-        let anchored = r"\b((?:sk|rk)_(?:test|live|prod)_[a-zA-Z0-9]{10,99})\b";
-        assert_eq!(infer_confidence_gitleaks(anchored), "high");
+        // contains literal "sk_test_" or "sk_live_" inline → high
+        let inline_literal = r"\b(sk_test_[a-zA-Z0-9]{20,99})\b";
+        assert_eq!(infer_confidence_gitleaks(inline_literal), "high");
+
+        // alternation form like (?:sk|rk)_(?:test|live)_ doesn't contain the
+        // literal "sk_test" substring, so it falls through to medium
+        let alternation = r"\b((?:sk|rk)_(?:test|live|prod)_[a-zA-Z0-9]{10,99})\b";
+        assert_eq!(infer_confidence_gitleaks(alternation), "medium");
 
         // context-anchored: contains "=" operator
         let context = r"(?i)(?:adafruit)[^0-9a-z\-_](?:[0-9a-z\-_]{0,50}?)([0-9a-z]{32})";
@@ -1268,15 +1458,17 @@ mod tests {
 
         let winner = dedup.get("test.duplicate").unwrap();
         // last insert wins in HashMap — ha is last, so hand-authored wins
-        assert_eq!(winner.source, "hand-authored",
-            "hand-authored should win dedup for duplicate ids");
+        assert_eq!(
+            winner.source, "hand-authored",
+            "hand-authored should win dedup for duplicate ids"
+        );
     }
 
     #[test]
     fn test_gitleaks_parser() {
-        let fixture = include_str!("tests/fixtures/gitleaks_snippet.toml");
-        let gl_file: GitleaksFile = toml::from_str(fixture)
-            .expect("fixture must parse as gitleaks TOML");
+        let fixture = include_str!("../tests/fixtures/gitleaks_snippet.toml");
+        let gl_file: GitleaksFile =
+            toml::from_str(fixture).expect("fixture must parse as gitleaks TOML");
 
         assert_eq!(gl_file.rules.len(), 2);
 
@@ -1284,11 +1476,15 @@ mod tests {
         assert_eq!(stripe.id, "stripe-access-token");
         assert!(stripe.regex.is_some(), "stripe rule must have regex");
         let regex = stripe.regex.as_ref().unwrap();
-        // prefix-anchored: sk_test/sk_live in the regex → high confidence
-        assert_eq!(infer_confidence_gitleaks(regex), "high");
+        // alternation form (sk|rk)_(test|live) doesn't contain the literal
+        // substring "sk_test" so confidence falls through to medium
+        assert_eq!(infer_confidence_gitleaks(regex), "medium");
         // id gets gl. prefix
         let normalized_id = format!("gl.{}", stripe.id);
-        assert!(normalized_id.starts_with("gl."), "id must be prefixed with gl.");
+        assert!(
+            normalized_id.starts_with("gl."),
+            "id must be prefixed with gl."
+        );
         assert_eq!(stripe.tags.as_ref().unwrap(), &["stripe"]);
         assert_eq!(stripe.entropy.unwrap(), 2.0);
         assert_eq!(stripe.keywords.as_ref().unwrap(), &["sk_test", "sk_live"]);
@@ -1298,15 +1494,12 @@ mod tests {
         let ada_regex = adafruit.regex.as_ref().unwrap();
         // context-anchored (contains (?i)) → medium confidence
         assert_eq!(infer_confidence_gitleaks(ada_regex), "medium");
-        assert_eq!(
-            format!("gl.{}", adafruit.id),
-            "gl.adafruit-api-key"
-        );
+        assert_eq!(format!("gl.{}", adafruit.id), "gl.adafruit-api-key");
     }
 
     #[test]
     fn test_spdb_parser() {
-        let fixture = include_str!("tests/fixtures/spdb_snippet.yaml");
+        let fixture = include_str!("../tests/fixtures/spdb_snippet.yaml");
         let patterns = parse_spdb_file(fixture, "tests/fixtures/spdb_snippet.yaml");
 
         assert_eq!(patterns.len(), 2);
@@ -1323,32 +1516,50 @@ mod tests {
         let stripe = &patterns[1];
         assert_eq!(stripe.name, "Stripe API Key");
         assert_eq!(stripe.confidence, "high");
-        assert_eq!(format!("spdb.{}", slugify(&stripe.name)), "spdb.stripe-api-key");
+        assert_eq!(
+            format!("spdb.{}", slugify(&stripe.name)),
+            "spdb.stripe-api-key"
+        );
     }
 
     #[test]
     fn test_np_parser() {
-        let fixture = include_str!("tests/fixtures/np_snippet.yaml");
+        let fixture = include_str!("../tests/fixtures/np_snippet.yaml");
         let rules = parse_np_file(fixture, "tests/fixtures/np_snippet.yaml");
 
         assert_eq!(rules.len(), 2, "expected 2 rules from np fixture");
 
         let aws1 = &rules[0];
-        assert_eq!(aws1.id, "np.aws.1", "NP id must be verbatim (already namespaced)");
+        assert_eq!(
+            aws1.id, "np.aws.1",
+            "NP id must be verbatim (already namespaced)"
+        );
         assert_eq!(aws1.name, "AWS API Key");
-        assert!(aws1.categories.contains(&"api".to_string()), "categories must include 'api'");
+        assert!(
+            aws1.categories.contains(&"api".to_string()),
+            "categories must include 'api'"
+        );
         // no fuzzy → high confidence
         assert_eq!(infer_confidence_np(&aws1.categories), "high");
         // categories mapped to tags, NOT category field
-        assert!(!aws1.categories.is_empty(), "categories must be preserved for tag mapping");
+        assert!(
+            !aws1.categories.is_empty(),
+            "categories must be preserved for tag mapping"
+        );
         assert!(!aws1.pattern.is_empty(), "pattern must be present");
 
         let aws2 = &rules[1];
         assert_eq!(aws2.id, "np.aws.2");
-        assert!(aws2.categories.contains(&"fuzzy".to_string()), "aws2 must have fuzzy category");
+        assert!(
+            aws2.categories.contains(&"fuzzy".to_string()),
+            "aws2 must have fuzzy category"
+        );
         assert_eq!(infer_confidence_np(&aws2.categories), "medium");
         // multiline (?x) pattern must be preserved with newlines
-        assert!(aws2.pattern.contains('\n'), "multiline pattern must preserve newlines");
+        assert!(
+            aws2.pattern.contains('\n'),
+            "multiline pattern must preserve newlines"
+        );
         assert!(aws2.pattern.contains("(?x)"), "(?x) flag must be preserved");
     }
 

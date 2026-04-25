@@ -1,5 +1,3 @@
 /target
 .env
 *.jsonl
-rules/combined.yaml
-rules/patterns-test-fixtures.yaml

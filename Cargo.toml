@@ -34,17 +34,15 @@ base64 = "0.22"
 url = "2"
 fpe = "0.6"
 aes = "0.8"
+toml = "0.8"
 
 [[bin]]
 name = "bleep-tui"
 path = "src/bin/tui.rs"
 
-[build-dependencies]
-toml = "0.8"
-serde_yml = "0.0.12"
-serde = { version = "1", features = ["derive"] }
-regex = "1"
+[[bin]]
+name = "build-rules"
+path = "src/bin/build-rules.rs"
 
 [dev-dependencies]
-toml = "0.8"
 tempfile = "3"
