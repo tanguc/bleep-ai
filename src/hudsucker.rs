@@ -310,6 +310,9 @@ pub async fn run_hudsucker(port: u16, log_file: String, min_confidence: String) 
         println!("[stats] redaction history DB at {}", stats_path.display());
     }
 
+    // start the local HTTP stats server for the menu-bar dashboard
+    crate::stats_server::start();
+
     println!("starting hudsucker proxy on :{port}");
 
     let key_pair = KeyPair::from_pem(include_str!("key.pem")).expect("failed to parse private key");

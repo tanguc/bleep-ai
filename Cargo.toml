@@ -48,3 +48,4 @@ path = "src/bin/build-rules.rs"
 
 [dev-dependencies]
 tempfile = "3"
+tower = "0.5.3"

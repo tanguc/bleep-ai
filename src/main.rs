@@ -8,6 +8,7 @@ mod proxy;
 mod replacement;
 mod request_logger;
 mod stats;
+mod stats_server;
 mod types;
 
 use clap::Parser;
