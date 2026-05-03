@@ -1,0 +1,19 @@
+{
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "rust-lang.rust-analyzer",
+    "[rust]": {
+        "editor.defaultFormatter": "rust-lang.rust-analyzer",
+        "editor.formatOnSave": true
+    },
+    "rust-analyzer.check.command": "clippy",
+    "rust-analyzer.check.extraArgs": ["--", "-W", "clippy::pedantic"],
+    "rust-analyzer.rustfmt.rangeFormatting.enable": true,
+    // The Tauri crate is intentionally outside the workspace (different
+    // dep tree, separate Cargo.lock). Listing both Cargo.toml files here
+    // tells rust-analyzer to index both, so go-to-definition / hover work
+    // for Tauri types like TrayIcon, MenuItem, WebviewWindowBuilder, etc.
+    "rust-analyzer.linkedProjects": [
+        "Cargo.toml",
+        "apps/menu-bar/src-tauri/Cargo.toml"
+    ]
+}
