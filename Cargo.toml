@@ -3,11 +3,11 @@ name = "bleep-gateway"
 version = "0.1.0"
 edition = "2024"
 
-# explicit workspace exclusion — apps/menu-bar/src-tauri is its own Cargo
-# project (different dependency tree, independent Cargo.lock) and must
-# not be pulled into the gateway build.
+# Workspace: gateway crate + shared bleep-events crate. The Tauri menu-bar
+# crate stays excluded (different dep tree, independent Cargo.lock); it
+# pulls bleep-events as a path dep instead.
 [workspace]
-members = []
+members = ["crates/bleep-events"]
 exclude = ["apps/menu-bar/src-tauri"]
 
 [dependencies]
@@ -45,6 +45,7 @@ toml = "0.8"
 rayon = "1.12.0"
 rusqlite = { version = "0.39.0", features = ["bundled"] }
 libc = "0.2.186"
+bleep-events = { path = "crates/bleep-events" }
 
 [[bin]]
 name = "bleep-tui"

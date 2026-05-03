@@ -15,35 +15,12 @@ use std::io::{self, BufRead, BufReader};
 use std::net::TcpStream;
 use tracing::{debug, info, warn};
 
-// mirrors event_bus::RedactedEntry — kept local since TUI is a separate binary
-#[derive(serde::Deserialize)]
-struct RedactedEntry {
-    rule_id: String,
-    category: String,
-    severity: String,
-    matched_text: String,
-}
-
-// mirrors event_bus::ProxyEvent — must match the serde(tag = "type") format
-#[derive(serde::Deserialize)]
-#[serde(tag = "type")]
-enum ProxyEvent {
-    Request {
-        id: String,
-        ts: String,
-        method: String,
-        uri: String,
-        redacted: Vec<RedactedEntry>,
-    },
-    // kept for future use
-    #[allow(dead_code)]
-    Response {
-        id: String,
-        ts: String,
-        uri: String,
-        status: u16,
-    },
-}
+// Wire types from the shared crate — single source of truth across
+// gateway/TUI/GUI. Previously this file mirrored RedactedEntry by hand
+// using `matched_text` instead of `fake_value`, so the TUI had been
+// silently failing to parse events ever since the gateway field was
+// renamed.
+use bleep_events::{ProxyEvent, RedactedEntry};
 
 // flat display entry used by the UI
 struct DisplayEntry {
@@ -401,8 +378,8 @@ fn ui_list(f: &mut ratatui::Frame, app: &mut App) {
                 ),
                 Span::styled("    Severity: ", Style::default().fg(Color::DarkGray)),
                 Span::styled(&entry.severity, Style::default().fg(severity_color)),
-                Span::styled("    Matched: ", Style::default().fg(Color::DarkGray)),
-                Span::styled(&entry.matched_text, Style::default().fg(Color::Red)),
+                Span::styled("    Fake: ", Style::default().fg(Color::DarkGray)),
+                Span::styled(&entry.fake_value, Style::default().fg(Color::Red)),
             ]));
         }
 
@@ -478,8 +455,8 @@ fn ui_detail(f: &mut ratatui::Frame, app: &mut App) {
                     Span::styled(&entry.category, Style::default().fg(Color::Cyan)),
                 ]),
                 Line::from(vec![
-                    Span::styled("  Matched: ", Style::default().fg(Color::DarkGray)),
-                    Span::styled(&entry.matched_text, Style::default().fg(Color::Red)),
+                    Span::styled("  Fake: ", Style::default().fg(Color::DarkGray)),
+                    Span::styled(&entry.fake_value, Style::default().fg(Color::Red)),
                 ]),
                 Line::raw(""),
             ])

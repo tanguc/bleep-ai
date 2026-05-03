@@ -275,6 +275,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "843867be96c8daad0d758b57df9392b6d8d271134fce549de6ce169ff98a92af"
 
 [[package]]
+name = "bleep-events"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "bleep-gateway"
 version = "0.1.0"
 dependencies = [
@@ -282,6 +290,7 @@ dependencies = [
  "aho-corasick",
  "axum",
  "base64",
+ "bleep-events",
  "bytes",
  "chrono",
  "clap",

@@ -6,9 +6,9 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tauri::{
-    AppHandle, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder, WindowEvent,
     menu::{Menu, MenuBuilder, MenuEvent, MenuItem, PredefinedMenuItem, SubmenuBuilder},
     tray::{TrayIcon, TrayIconBuilder},
+    AppHandle, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder, WindowEvent,
 };
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::net::TcpStream;
@@ -23,31 +23,10 @@ struct Summary {
     last_30d: u64,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
-struct RedactedEntry {
-    rule_id: String,
-    category: String,
-    subcategory: Option<String>,
-    severity: String,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(tag = "type")]
-enum ProxyEvent {
-    Request {
-        id: String,
-        ts: String,
-        method: String,
-        uri: String,
-        redacted: Vec<RedactedEntry>,
-    },
-    Response {
-        id: String,
-        ts: String,
-        uri: String,
-        status: u16,
-    },
-}
+// Wire types from the shared crate — same definitions the gateway and TUI
+// use. Previously this file maintained its own RedactedEntry / ProxyEvent
+// copies that had drifted (missing fake_value, subcategory typed as Option).
+use bleep_events::ProxyEvent;
 
 struct StatsState {
     last_summary: Mutex<Summary>,
@@ -475,7 +454,7 @@ fn shutdown_gateway(gateway: &GatewayProcess) {
 #[cfg(unix)]
 fn spawn_signal_handler(gateway: Arc<GatewayProcess>) {
     tauri::async_runtime::spawn(async move {
-        use tokio::signal::unix::{SignalKind, signal};
+        use tokio::signal::unix::{signal, SignalKind};
         let term = signal(SignalKind::terminate());
         let int = signal(SignalKind::interrupt());
         let (mut term, mut int) = match (term, int) {
@@ -624,7 +603,10 @@ fn run() {
             shutdown_gateway(&gw_for_exit);
         }
         // macOS: clicking the dock icon when no windows are visible should reopen.
-        RunEvent::Reopen { has_visible_windows, .. } if !has_visible_windows => {
+        RunEvent::Reopen {
+            has_visible_windows,
+            ..
+        } if !has_visible_windows => {
             show_main_window(app);
         }
         _ => {}

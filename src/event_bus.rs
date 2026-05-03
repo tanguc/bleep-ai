@@ -1,36 +1,11 @@
-use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 use tokio::sync::broadcast;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RedactedEntry {
-    pub rule_id: String,
-    pub category: String,
-    pub subcategory: String,
-    pub severity: String,
-    /// fake value only — original value is never on the event bus (security invariant)
-    pub fake_value: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type")]
-pub enum ProxyEvent {
-    Request {
-        id: String,
-        ts: String,
-        method: String,
-        uri: String,
-        redacted: Vec<RedactedEntry>,
-    },
-    Response {
-        id: String,
-        ts: String,
-        uri: String,
-        status: u16,
-    },
-}
+// Wire types come from the shared crate so the TUI and the GUI can
+// pull from the same definitions and not silently drift.
+pub use bleep_events::{ProxyEvent, RedactedEntry};
 
 static BUS: OnceLock<broadcast::Sender<ProxyEvent>> = OnceLock::new();
 

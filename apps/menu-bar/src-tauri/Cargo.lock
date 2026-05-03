@@ -125,9 +125,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "bleep-events"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "bleep-menu-bar"
 version = "0.1.0"
 dependencies = [
+ "bleep-events",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
