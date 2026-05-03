@@ -399,9 +399,8 @@ fn run() {
                     "Today: 0   ·   7d: 0   ·   30d: 0   ·   total: 0",
                     false,
                 )?;
+                // text-only tray — no icon, just the live counter title
                 let tray = TrayIconBuilder::with_id("main")
-                    .icon(app.default_window_icon().cloned().ok_or("no default icon")?)
-                    .icon_as_template(true)
                     .title("Bleep •")
                     .menu(&initial_menu)
                     .on_menu_event(handle_menu_event)
