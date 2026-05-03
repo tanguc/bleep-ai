@@ -54,6 +54,10 @@ path = "src/bin/tui.rs"
 name = "build-rules"
 path = "src/bin/build-rules.rs"
 
+[[bin]]
+name = "curate-rules"
+path = "src/bin/curate-rules.rs"
+
 [dev-dependencies]
 tempfile = "3"
 tower = "0.5.3"
