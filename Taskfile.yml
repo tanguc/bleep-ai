@@ -23,6 +23,12 @@ tasks:
     cmds:
       - cargo build --release
 
+  bindings:
+    desc: regenerate TS bindings (crates/bleep-events/bindings/) from Rust types via ts-rs
+    cmds:
+      - cargo test --package bleep-events --quiet
+      - echo "wrote crates/bleep-events/bindings/*.ts"
+
   rules:
     desc: regenerate rules/combined.yaml from vendor sources
     sources:

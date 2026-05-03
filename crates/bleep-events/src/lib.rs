@@ -10,13 +10,15 @@
 //! discrimination. Each line is one ProxyEvent.
 
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
 /// One redaction the proxy applied to a body.
 ///
 /// Security note: `fake_value` is the substituted value (safe to display
 /// or log). The original matched bytes are NEVER on this struct — they
 /// stay only in the on-disk JSONL audit log.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 pub struct RedactedEntry {
     pub rule_id: String,
     pub category: String,
@@ -26,7 +28,8 @@ pub struct RedactedEntry {
 }
 
 /// One event on the proxy event bus.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 #[serde(tag = "type")]
 pub enum ProxyEvent {
     Request {

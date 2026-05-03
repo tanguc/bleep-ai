@@ -1,4 +1,11 @@
 // Bleep desktop app — hash-routed SPA. No bundler, no framework.
+//
+// Wire-event types come from crates/bleep-events/bindings/, generated
+// from Rust by ts-rs. The `@bleep-events/*` alias is set in jsconfig.json.
+// To regenerate after editing Rust types:  cargo test --package bleep-events
+
+/** @typedef {import("@bleep-events/ProxyEvent").ProxyEvent} ProxyEvent */
+/** @typedef {import("@bleep-events/RedactedEntry").RedactedEntry} RedactedEntry */
 
 const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
@@ -180,7 +187,8 @@ async function refreshSettings() {
 
 // ── live tail (cross-route — appends only when dashboard is mounted) ──
 
-listen("redaction", (e) => {
+/** @param {{ payload: ProxyEvent }} e */
+function onRedactionEvent(e) {
   if (activeRoute !== "dashboard") return;
   const tail = document.getElementById("tail");
   if (!tail) return;
@@ -188,8 +196,12 @@ listen("redaction", (e) => {
   if (empty) empty.remove();
 
   const ev = e.payload;
-  const redactedCount = (ev.redacted || []).length;
-  const top = (ev.redacted || [])
+  // ProxyEvent is tagged — only Request carries `redacted`. Response has no
+  // redacted field at all, so guard on the discriminant.
+  if (ev.type !== "Request") return;
+  const redacted = ev.redacted ?? [];
+  const redactedCount = redacted.length;
+  const top = redacted
     .slice(0, 3)
     .map((r) => r.subcategory || r.category || r.rule_id)
     .join(", ");
@@ -211,7 +223,11 @@ listen("redaction", (e) => {
   tailRowsEmitted += 1;
   const counter = document.getElementById("tail-counter");
   if (counter) counter.textContent = `· ${tailRowsEmitted} events`;
-}).catch((err) => console.warn("listen failed:", err));
+}
+
+listen("redaction", onRedactionEvent).catch((err) =>
+  console.warn("listen failed:", err)
+);
 
 // ── boot ───────────────────────────────────────────────────────────────
 
