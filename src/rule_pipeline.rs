@@ -1258,28 +1258,25 @@ pub fn run(opts: &RunOptions) -> RunResult {
     ];
     let valid_categories = ["secret", "pii", "infra"];
 
+    // sequential cheap checks: id format, duplicate detection, category/replacement_type
     let mut seen_ids: HashSet<&str> = HashSet::new();
     for rule in &final_rules {
-        // id format
         assert!(
             !rule.id.is_empty() && !rule.id.contains(char::is_whitespace),
             "rule_pipeline: rule has invalid id (empty or contains whitespace): {:?}",
             rule.id
         );
-        // no duplicate ids after dedup (defensive)
         assert!(
             seen_ids.insert(rule.id.as_str()),
             "rule_pipeline: duplicate id after dedup: {}",
             rule.id
         );
-        // category
         assert!(
             valid_categories.contains(&rule.category.as_str()),
             "rule_pipeline: rule {} has invalid category '{}' (must be secret|pii|infra)",
             rule.id,
             rule.category
         );
-        // replacement_type
         assert!(
             valid_replacement_types.contains(&rule.replacement_type.as_str()),
             "rule_pipeline: rule {} has invalid replacement_type '{}'. Valid values: {:?}",
@@ -1287,15 +1284,6 @@ pub fn run(opts: &RunOptions) -> RunResult {
             rule.replacement_type,
             valid_replacement_types
         );
-        // regex compilation — strip (?# ...) POSIX comments unsupported by Rust regex crate
-        // then use 256MB size limit to allow complex patterns (e.g. [\w-]{50,1000})
-        let cleaned_regex = strip_posix_comments(&rule.regex);
-        regex::bytes::RegexBuilder::new(&cleaned_regex)
-            .size_limit(256 * 1024 * 1024)
-            .dfa_size_limit(256 * 1024 * 1024)
-            .build()
-            .unwrap_or_else(|e| panic!("rule_pipeline: invalid regex in rule {}: {}", rule.id, e));
-        // warn if secret/pii rule has no keywords
         if (rule.category == "secret" || rule.category == "pii") && rule.keywords.is_empty() {
             log_progress!(quiet,
                 "rule_pipeline: warn: rule {} ({}) has no keywords — regex runs on every body that passes combined pre-filter",
@@ -1303,6 +1291,17 @@ pub fn run(opts: &RunOptions) -> RunResult {
             );
         }
     }
+
+    // parallel regex compilation — the expensive part (NFA + lazy DFA scaffolding per rule)
+    use rayon::prelude::*;
+    final_rules.par_iter().for_each(|rule| {
+        let cleaned_regex = strip_posix_comments(&rule.regex);
+        regex::bytes::RegexBuilder::new(&cleaned_regex)
+            .size_limit(256 * 1024 * 1024)
+            .dfa_size_limit(256 * 1024 * 1024)
+            .build()
+            .unwrap_or_else(|e| panic!("rule_pipeline: invalid regex in rule {}: {}", rule.id, e));
+    });
     log_progress!(quiet, "rule_pipeline: validated {} rules", final_rules.len());
 
     // ── step 8: write combined.yaml ───────────────────────────────────────────
@@ -1316,8 +1315,34 @@ pub fn run(opts: &RunOptions) -> RunResult {
         #   See: rules/vendor/secrets-patterns-db/LICENSE\n";
 
     if let Some(n) = opts.max_rules {
-        log_progress!(quiet, "rule_pipeline: applying max_rules limit of {} rules", n);
-        final_rules.truncate(n);
+        log_progress!(quiet, "rule_pipeline: applying max_rules limit of {} rules (round-robin across vendors)", n);
+        // bucket by source, preserving alphabetical order within each bucket
+        let mut buckets: HashMap<String, Vec<NormalizedRule>> = HashMap::new();
+        for rule in final_rules.drain(..) {
+            buckets.entry(rule.source.clone()).or_default().push(rule);
+        }
+        // stable vendor order so output is deterministic
+        let mut sources: Vec<String> = buckets.keys().cloned().collect();
+        sources.sort();
+        let mut iters: Vec<_> = sources.iter().map(|s| buckets.remove(s).unwrap().into_iter()).collect();
+        let mut picked: Vec<NormalizedRule> = Vec::with_capacity(n);
+        'outer: loop {
+            let mut progressed = false;
+            for it in iters.iter_mut() {
+                if let Some(rule) = it.next() {
+                    picked.push(rule);
+                    progressed = true;
+                    if picked.len() >= n {
+                        break 'outer;
+                    }
+                }
+            }
+            if !progressed {
+                break;
+            }
+        }
+        picked.sort_by(|a, b| a.id.cmp(&b.id));
+        final_rules = picked;
     }
 
     let combined = CombinedFile {
