@@ -4,6 +4,7 @@ version: "3"
 vars:
   BIN: bleep-gateway
   TUI: bleep-tui
+  MENUBAR: bleep-menu-bar
 
 tasks:
   default:
@@ -59,6 +60,24 @@ tasks:
     desc: run the TUI monitor
     cmds:
       - cargo run --bin {{.TUI}}
+
+  menu-bar:
+    desc: run the menu-bar app (debug); builds gateway in release first, kills stale instances, then cargo run
+    cmds:
+      - ./apps/menu-bar/run-dev.sh
+
+  menu-bar:stop:
+    desc: kill running menu-bar + gateway and clean port files
+    cmds:
+      - pkill -f {{.MENUBAR}} || true
+      - pkill -f {{.BIN}}     || true
+      - rm -f /tmp/bleep-stats.port /tmp/bleep-events.port
+
+  menu-bar:build:
+    desc: build the menu-bar app (debug)
+    dir: apps/menu-bar/src-tauri
+    cmds:
+      - cargo build
 
   test:
     desc: run all tests
