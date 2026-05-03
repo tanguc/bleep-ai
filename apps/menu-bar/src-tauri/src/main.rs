@@ -401,8 +401,25 @@ async fn gateway_already_running() -> bool {
     matches!(client.get(&url).send().await, Ok(r) if r.status().is_success())
 }
 
+/// Returns true when the user opted into auto-spawning the gateway via env var.
+/// Default is OFF — the menu-bar app is observation-only unless explicitly told
+/// otherwise.
+fn auto_spawn_enabled() -> bool {
+    matches!(
+        std::env::var("BLEEP_SPAWN_GATEWAY").ok().as_deref(),
+        Some("1") | Some("true") | Some("TRUE") | Some("True")
+    )
+}
+
 fn spawn_gateway(app: AppHandle, gateway: Arc<GatewayProcess>) {
     tauri::async_runtime::spawn(async move {
+        if !auto_spawn_enabled() {
+            println!(
+                "[menu-bar] BLEEP_SPAWN_GATEWAY not set — UI runs in observe-only mode \
+                 (start the gateway yourself, or set BLEEP_SPAWN_GATEWAY=1 to auto-spawn)"
+            );
+            return;
+        }
         if gateway_already_running().await {
             println!("[menu-bar] gateway already running — not spawning a second copy");
             return;

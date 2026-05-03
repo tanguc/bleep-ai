@@ -18,6 +18,7 @@ pkill -f bleep-menu-bar 2>/dev/null || true
 pkill -f bleep-gateway  2>/dev/null || true
 rm -f /tmp/bleep-stats.port /tmp/bleep-events.port
 
-echo "==> running bleep-menu-bar (debug)…"
+echo "==> running bleep-menu-bar (debug, auto-spawning gateway)…"
 cd apps/menu-bar/src-tauri
+export BLEEP_SPAWN_GATEWAY=1
 exec cargo run

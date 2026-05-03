@@ -27,8 +27,10 @@ The menu-bar app discovers the gateway via two port files in
 - `/tmp/bleep-events.port` — TCP JSONL stream of `ProxyEvent` (same
   one the TUI consumes)
 
-If the gateway is not running when the menu-bar app starts, the app
-spawns it as a child process. On menu-bar quit, the child is killed
+By default the menu-bar app runs in **observe-only mode** — it
+displays whatever a separately-running `bleep-gateway` is doing but
+does NOT auto-spawn one. Set `BLEEP_SPAWN_GATEWAY=1` to opt into
+auto-spawning; on menu-bar quit, the spawned child is killed
 (`kill_on_drop = true`).
 
 ## Development
@@ -47,8 +49,15 @@ cargo run
 If you want to point at a custom gateway binary:
 
 ```bash
-BLEEP_GATEWAY_BIN=/path/to/bleep-gateway cargo run
+BLEEP_SPAWN_GATEWAY=1 BLEEP_GATEWAY_BIN=/path/to/bleep-gateway cargo run
 ```
+
+## Env vars
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `BLEEP_SPAWN_GATEWAY` | unset | Set to `1`/`true` to make the menu-bar app spawn the gateway as a child process. Without it the app runs in observe-only mode. |
+| `BLEEP_GATEWAY_BIN`   | unset | Override the gateway binary path. Only consulted when `BLEEP_SPAWN_GATEWAY` is set. |
 
 ## Files
 

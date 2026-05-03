@@ -62,9 +62,15 @@ tasks:
       - cargo run --bin {{.TUI}}
 
   menu-bar:
-    desc: run the menu-bar app (debug); builds gateway in release first, kills stale instances, then cargo run
+    desc: run the menu-bar app (debug) and auto-spawn the gateway as a child
     cmds:
       - ./apps/menu-bar/run-dev.sh
+
+  menu-bar:observe:
+    desc: run the menu-bar app in observe-only mode (does not spawn the gateway — start it yourself with `task run` or `task run:release`)
+    dir: apps/menu-bar/src-tauri
+    cmds:
+      - cargo run
 
   menu-bar:stop:
     desc: kill running menu-bar + gateway and clean port files
