@@ -69,29 +69,39 @@ fn test_sc1_dedup_same_raw_same_fake() {
 /// SC-2: each typed generator produces output matching documented format
 #[test]
 fn test_sc2_typed_fake_formats() {
-    // email: matches \w+@example\.com
+    // realistic-mode default: replacers mimic input shape, no BLEEP markers
+
+    // email: random handle at one of the RFC 2606 reserved domains
     let email = replacers::generate("faker_email", "r", b"old@real.com");
-    assert!(email.ends_with("@example.com"), "email must end with @example.com: {}", email);
+    let email_re = regex::Regex::new(r"^[a-z0-9]+@(example\.com|example\.org|example\.net)$").unwrap();
+    assert!(email_re.is_match(&email), "email format mismatch: {}", email);
 
-    // phone: matches \+1-555-010-\d{4}
-    let phone = replacers::generate("faker_phone", "r", b"555-1234");
-    let phone_re = regex::Regex::new(r"^\+1-555-010-\d{4}$").unwrap();
-    assert!(phone_re.is_match(&phone), "phone format mismatch: {}", phone);
+    // phone: format preserved (separators in same positions, digits randomized)
+    let input_phone = "+1 (555) 123-4567";
+    let phone = replacers::generate("faker_phone", "r", input_phone.as_bytes());
+    assert_eq!(phone.len(), input_phone.len(), "phone length must be preserved: {}", phone);
+    for (orig, new) in input_phone.chars().zip(phone.chars()) {
+        if !orig.is_ascii_digit() {
+            assert_eq!(orig, new, "non-digit char must be preserved: {} vs {}", input_phone, phone);
+        }
+    }
 
-    // SSN: matches 000-00-\d{4}
+    // SSN: 9XX area code (unallocated SSA range)
     let ssn = replacers::generate("faker_ssn", "r", b"123-45-6789");
-    let ssn_re = regex::Regex::new(r"^000-00-\d{4}$").unwrap();
+    let ssn_re = regex::Regex::new(r"^9\d{2}-\d{2}-\d{4}$").unwrap();
     assert!(ssn_re.is_match(&ssn), "ssn format mismatch: {}", ssn);
 
-    // AWS key: starts with AKIABLEEP, 20 chars
+    // AWS key: prefix preserved from input, total 20 chars, no BLEEP
     let aws = replacers::generate("faker_aws_key", "r", b"AKIAIOSFODNN7EXAMPLE");
     assert_eq!(aws.len(), 20, "aws key must be 20 chars: {}", aws);
-    assert!(aws.starts_with("AKIABLEEP"), "aws key must start with AKIABLEEP: {}", aws);
+    assert!(aws.starts_with("AKIA"), "aws key prefix must be preserved: {}", aws);
+    assert!(!aws.contains("BLEEP"), "aws key must not contain BLEEP marker: {}", aws);
 
-    // GitHub PAT: starts with ghp_BLEEP, 40 chars
+    // GitHub PAT: prefix preserved, total 40 chars, no BLEEP
     let pat = replacers::generate("faker_github_pat", "r", b"ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef0123");
     assert_eq!(pat.len(), 40, "github pat must be 40 chars: {}", pat);
-    assert!(pat.starts_with("ghp_BLEEP"), "github pat must start with ghp_BLEEP: {}", pat);
+    assert!(pat.starts_with("ghp_"), "github pat prefix must be preserved: {}", pat);
+    assert!(!pat.contains("BLEEP"), "github pat must not contain BLEEP marker: {}", pat);
 }
 
 /// SC-3: every fake value is JSON-safe when inserted into a JSON string field

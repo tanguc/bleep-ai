@@ -246,12 +246,21 @@ mod tests {
         assert_eq!(redactions.len(), 2);
         // both spans replaced — result should contain both fakes
         let result_str = String::from_utf8(result.to_vec()).unwrap();
-        // fakes are "GB00BLEEP0000000000000" x2 joined by "_"
+        // both spans replaced with iban-shaped fakes joined by "_"
         let parts: Vec<&str> = result_str.split('_').collect();
         assert_eq!(parts.len(), 2, "result should still have _ separator: {}", result_str);
-        // verify both halves contain the iban fake marker
+        // verify each half is iban-shaped (2-letter country + alnum, default GB22)
         for part in &parts {
-            assert!(part.contains("BLEEP"), "each half should contain BLEEP marker: {}", result_str);
+            assert!(
+                part.len() >= 15 && part.len() <= 34,
+                "each half should be iban-shaped (15-34 chars): {}",
+                part
+            );
+            assert!(
+                part.bytes().take(2).all(|b| b.is_ascii_uppercase()),
+                "iban must start with 2 uppercase country letters: {}",
+                part
+            );
         }
     }
 
