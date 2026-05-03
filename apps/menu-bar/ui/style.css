@@ -1,4 +1,4 @@
-/* Bleep dashboard — dark, dense, no fluff */
+/* Bleep desktop app — dark, dense, no fluff. Sidebar + content layout. */
 
 :root {
   --bg: #0e0f12;
@@ -12,6 +12,7 @@
   --red: #ff5d6c;
   --orange: #ff9d4a;
   --purple: #a587ff;
+  --sidebar-w: 200px;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -26,34 +27,115 @@ html, body {
 }
 
 body {
-  display: flex;
-  flex-direction: column;
-  padding: 20px 24px;
-  gap: 16px;
+  display: grid;
+  grid-template-columns: var(--sidebar-w) 1fr;
+  grid-template-rows: 100%;
 }
 
 .dim { color: var(--fg-dim); font-weight: 400; }
+.small { font-size: 11px; }
+.mono { font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 11px; }
 
-header {
+/* ── sidebar ──────────────────────────────────────────────────────────── */
+
+.sidebar {
+  background: #0a0b0e;
+  border-right: 1px solid var(--border);
+  padding: 16px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  /* leave space for the macOS traffic-light buttons */
+  -webkit-app-region: drag;
+  padding-top: 38px;
+}
+
+.sidebar nav, .sidebar .brand, .sidebar .sidebar-footer {
+  -webkit-app-region: no-drag;
+}
+
+.brand {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+  padding: 6px 10px 14px;
+}
+
+.sidebar nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sidebar a {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  color: var(--fg);
+  text-decoration: none;
+  font-size: 13px;
+}
+
+.sidebar a:hover { background: var(--bg-elev); }
+.sidebar a.active {
+  background: var(--bg-elev2);
+  color: var(--accent);
+}
+
+.sidebar a .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--fg-dim);
+}
+.sidebar a.active .dot { background: var(--accent); }
+
+.sidebar-footer {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+}
+
+/* ── content area ─────────────────────────────────────────────────────── */
+
+.content {
+  padding: 24px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+  height: 100%;
+}
+
+.content > header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 4px;
 }
 
 h1 {
-  font-size: 16px;
+  font-size: 22px;
   font-weight: 600;
   letter-spacing: -0.01em;
 }
 
 h2 {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
   color: var(--fg-dim);
   margin-bottom: 12px;
 }
+
+/* ── connection status pill ───────────────────────────────────────────── */
 
 .status {
   font-size: 11px;
@@ -62,9 +144,12 @@ h2 {
   background: var(--bg-elev);
   border: 1px solid var(--border);
   color: var(--fg-dim);
+  text-align: center;
 }
 .status.connected { color: var(--green); border-color: rgba(67,215,122,0.3); }
 .status.disconnected { color: var(--red); border-color: rgba(255,93,108,0.3); }
+
+/* ── cards ────────────────────────────────────────────────────────────── */
 
 .cards {
   display: grid;
@@ -88,7 +173,7 @@ h2 {
 }
 
 .card-value {
-  font-size: 28px;
+  font-size: 30px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.02em;
@@ -96,12 +181,13 @@ h2 {
 
 .card-total .card-value { color: var(--accent); }
 
+/* ── panels & charts ──────────────────────────────────────────────────── */
+
 .grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 12px;
-  flex: 1 1 auto;
-  min-height: 0;
+  flex: 0 0 auto;
 }
 
 .panel {
@@ -120,7 +206,9 @@ h2 {
   gap: 6px;
   overflow-y: auto;
   min-height: 0;
+  max-height: 280px;
 }
+.bar-chart.tall { max-height: none; }
 
 .bar {
   display: grid;
@@ -130,10 +218,8 @@ h2 {
   padding: 6px 8px;
   border-radius: 6px;
   background: linear-gradient(to right, var(--bar-fill, transparent) var(--bar-pct, 0%), transparent var(--bar-pct, 0%));
-  position: relative;
   font-variant-numeric: tabular-nums;
 }
-.bar:hover { background-color: var(--bg-elev2); background-image: linear-gradient(to right, var(--bar-fill, transparent) var(--bar-pct, 0%), transparent var(--bar-pct, 0%)); }
 
 .bar-label { font-size: 12px; color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bar-count { font-size: 12px; color: var(--fg-dim); }
@@ -150,7 +236,9 @@ h2 {
   font-size: 12px;
 }
 
-.live { flex: 0 0 auto; max-height: 240px; }
+/* ── live tail ────────────────────────────────────────────────────────── */
+
+.live { flex: 1 1 auto; min-height: 200px; }
 
 .tail {
   display: flex;
@@ -160,6 +248,7 @@ h2 {
   min-height: 0;
   font-family: "SF Mono", Menlo, Consolas, monospace;
   font-size: 11px;
+  flex: 1 1 auto;
 }
 
 .tail-row {
@@ -182,7 +271,18 @@ h2 {
 .tail-uri { color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tail-redactions { color: var(--orange); }
 
-/* scrollbars */
+/* ── settings kv table ────────────────────────────────────────────────── */
+
+.kv {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  gap: 8px 16px;
+  font-size: 12px;
+}
+.kv > div:nth-child(odd) { color: var(--fg-dim); }
+
+/* ── scrollbars ───────────────────────────────────────────────────────── */
+
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }

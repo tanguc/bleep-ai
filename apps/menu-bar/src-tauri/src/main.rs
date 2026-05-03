@@ -1,4 +1,4 @@
-// macOS: hide the dock icon — this is a menu-bar-only app.
+// macOS: hide the windows-console banner in release; we use the macOS run loop.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use serde::{Deserialize, Serialize};
@@ -6,8 +6,8 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tauri::{
-    AppHandle, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder,
-    menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem},
+    AppHandle, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder, WindowEvent,
+    menu::{Menu, MenuBuilder, MenuEvent, MenuItem, PredefinedMenuItem, SubmenuBuilder},
     tray::{TrayIcon, TrayIconBuilder},
 };
 use tokio::io::{AsyncBufReadExt, BufReader};
@@ -53,16 +53,15 @@ struct StatsState {
     last_summary: Mutex<Summary>,
 }
 
-/// Holds the embedded gateway child process so we can kill it on app quit.
-/// `None` means we did not spawn it (gateway was already running, or binary
-/// not found and the user is expected to run it themselves).
 #[derive(Default)]
 struct GatewayProcess {
     child: Mutex<Option<Child>>,
 }
 
 const POLL_INTERVAL_SECS: u64 = 2;
-const DASHBOARD_LABEL: &str = "dashboard";
+const MAIN_WINDOW: &str = "main";
+
+// ── port file discovery ───────────────────────────────────────────────────────
 
 fn read_port_file(path: &str) -> Option<u16> {
     std::fs::read_to_string(path)
@@ -83,21 +82,66 @@ fn get_stats_port() -> Option<u16> {
     read_proxy_stats_port()
 }
 
-async fn fetch_summary(port: u16) -> Option<Summary> {
-    let url = format!("http://127.0.0.1:{port}/stats");
-    let resp = reqwest::Client::builder()
-        .timeout(Duration::from_secs(2))
-        .build()
-        .ok()?
-        .get(&url)
-        .send()
-        .await
-        .ok()?;
-    if !resp.status().is_success() {
-        return None;
-    }
-    resp.json::<Summary>().await.ok()
+// ── window management ─────────────────────────────────────────────────────────
+
+fn show_main_window(app: &AppHandle) {
+    show_main_window_at(app, None);
 }
+
+fn show_main_window_at(app: &AppHandle, route: Option<&str>) {
+    if let Some(existing) = app.get_webview_window(MAIN_WINDOW) {
+        let _ = existing.show();
+        let _ = existing.unminimize();
+        let _ = existing.set_focus();
+        if let Some(r) = route {
+            let _ = existing.eval(&format!("window.location.hash = '#{r}'"));
+        }
+    } else {
+        let url = match route {
+            Some(r) => WebviewUrl::App(format!("index.html#{r}").into()),
+            None => WebviewUrl::App("index.html".into()),
+        };
+        let win = WebviewWindowBuilder::new(app, MAIN_WINDOW, url)
+            .title("Bleep")
+            .inner_size(1080.0, 720.0)
+            .min_inner_size(880.0, 560.0)
+            .resizable(true)
+            .visible(true)
+            .build();
+        if let Err(e) = win {
+            eprintln!("[menu-bar] failed to create main window: {e}");
+        }
+    }
+    refresh_activation_policy(app);
+}
+
+/// Hide instead of close — closing the red traffic light should leave the
+/// tray running (mac convention for tray-based apps).
+fn handle_close_request(window: &tauri::Window) {
+    let _ = window.hide();
+    refresh_activation_policy(&window.app_handle().clone());
+}
+
+/// macOS: show the dock icon when at least one window is visible; revert to
+/// Accessory (tray-only, no dock icon, no app-switcher entry) otherwise.
+fn refresh_activation_policy(_app: &AppHandle) {
+    #[cfg(target_os = "macos")]
+    {
+        use tauri::ActivationPolicy;
+        let any_visible = _app
+            .webview_windows()
+            .values()
+            .any(|w| w.is_visible().unwrap_or(false));
+        let policy = if any_visible {
+            ActivationPolicy::Regular
+        } else {
+            ActivationPolicy::Accessory
+        };
+        let _ = _app.set_activation_policy(policy);
+    }
+}
+
+// ── tray ──────────────────────────────────────────────────────────────────────
 
 fn format_tray_title(s: &Summary, connected: bool) -> String {
     if !connected {
@@ -114,7 +158,7 @@ fn format_menu_summary(s: &Summary) -> String {
     )
 }
 
-fn build_menu(
+fn build_tray_menu(
     app: &AppHandle,
     summary_text: &str,
     connected: bool,
@@ -127,35 +171,123 @@ fn build_menu(
     };
     let status = MenuItem::with_id(app, "status", status_label, false, None::<&str>)?;
     let sep = PredefinedMenuItem::separator(app)?;
-    let dashboard = MenuItem::with_id(app, "open_dashboard", "Open Dashboard…", true, None::<&str>)?;
+    let show = MenuItem::with_id(app, "show_main", "Show Bleep…", true, None::<&str>)?;
+    let dashboard = MenuItem::with_id(app, "show_dashboard", "Open Dashboard", true, None::<&str>)?;
+    let rules = MenuItem::with_id(app, "show_rules", "Rules", true, None::<&str>)?;
+    let settings = MenuItem::with_id(app, "show_settings", "Settings", true, None::<&str>)?;
     let sep2 = PredefinedMenuItem::separator(app)?;
     let quit = MenuItem::with_id(app, "quit", "Quit Bleep", true, Some("Cmd+Q"))?;
-    Menu::with_items(app, &[&header, &status, &sep, &dashboard, &sep2, &quit])
+    Menu::with_items(
+        app,
+        &[
+            &header, &status, &sep, &show, &dashboard, &rules, &settings, &sep2, &quit,
+        ],
+    )
 }
 
-fn open_dashboard(app: &AppHandle) {
-    if let Some(existing) = app.get_webview_window(DASHBOARD_LABEL) {
-        let _ = existing.show();
-        let _ = existing.set_focus();
-        return;
-    }
-    let builder = WebviewWindowBuilder::new(app, DASHBOARD_LABEL, WebviewUrl::App("index.html".into()))
-        .title("Bleep Dashboard")
-        .inner_size(900.0, 640.0)
-        .min_inner_size(720.0, 520.0)
-        .resizable(true)
-        .visible(true);
-    if let Err(e) = builder.build() {
-        eprintln!("[menu-bar] failed to create dashboard window: {e}");
-    }
-}
-
-fn handle_menu_event(app: &AppHandle, event: MenuEvent) {
+fn handle_tray_event(app: &AppHandle, event: MenuEvent) {
     match event.id().as_ref() {
         "quit" => app.exit(0),
-        "open_dashboard" => open_dashboard(app),
+        "show_main" => show_main_window(app),
+        "show_dashboard" => show_main_window_at(app, Some("dashboard")),
+        "show_rules" => show_main_window_at(app, Some("rules")),
+        "show_settings" => show_main_window_at(app, Some("settings")),
         _ => {}
     }
+}
+
+// ── app menu (mac menu bar across the top of the screen) ──────────────────────
+
+fn build_app_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
+    let app_submenu = SubmenuBuilder::new(app, "Bleep")
+        .text("about", "About Bleep")
+        .separator()
+        .text("hide", "Hide Bleep")
+        .text("hide_others", "Hide Others")
+        .separator()
+        .text("quit_app", "Quit Bleep")
+        .build()?;
+
+    let edit_submenu = SubmenuBuilder::new(app, "Edit")
+        .undo()
+        .redo()
+        .separator()
+        .cut()
+        .copy()
+        .paste()
+        .select_all()
+        .build()?;
+
+    let view_submenu = SubmenuBuilder::new(app, "View")
+        .text("nav_dashboard", "Dashboard")
+        .text("nav_rules", "Rules")
+        .text("nav_settings", "Settings")
+        .separator()
+        .text("reload", "Reload")
+        .build()?;
+
+    let window_submenu = SubmenuBuilder::new(app, "Window")
+        .minimize()
+        .text("close_window", "Close Window")
+        .separator()
+        .text("show_main_menu", "Bring to Front")
+        .build()?;
+
+    MenuBuilder::new(app)
+        .items(&[&app_submenu, &edit_submenu, &view_submenu, &window_submenu])
+        .build()
+}
+
+fn handle_app_menu_event(app: &AppHandle, event: MenuEvent) {
+    match event.id().as_ref() {
+        "quit_app" => app.exit(0),
+        "hide" => {
+            for w in app.webview_windows().values() {
+                let _ = w.hide();
+            }
+            refresh_activation_policy(app);
+        }
+        "hide_others" => {
+            // Tauri doesn't expose hideOtherApplications directly; closest is to
+            // do nothing here (the standard PredefinedMenuItem::hide_others would
+            // be ideal but for simplicity we no-op).
+        }
+        "about" => show_main_window_at(app, Some("about")),
+        "nav_dashboard" => show_main_window_at(app, Some("dashboard")),
+        "nav_rules" => show_main_window_at(app, Some("rules")),
+        "nav_settings" => show_main_window_at(app, Some("settings")),
+        "reload" => {
+            if let Some(w) = app.get_webview_window(MAIN_WINDOW) {
+                let _ = w.eval("window.location.reload()");
+            }
+        }
+        "close_window" => {
+            if let Some(w) = app.get_webview_window(MAIN_WINDOW) {
+                let _ = w.hide();
+                refresh_activation_policy(app);
+            }
+        }
+        "show_main_menu" => show_main_window(app),
+        _ => {}
+    }
+}
+
+// ── stats poller (updates tray title + menu) ──────────────────────────────────
+
+async fn fetch_summary(port: u16) -> Option<Summary> {
+    let url = format!("http://127.0.0.1:{port}/stats");
+    let resp = reqwest::Client::builder()
+        .timeout(Duration::from_secs(2))
+        .build()
+        .ok()?
+        .get(&url)
+        .send()
+        .await
+        .ok()?;
+    if !resp.status().is_success() {
+        return None;
+    }
+    resp.json::<Summary>().await.ok()
 }
 
 fn spawn_poller(app: AppHandle, tray: TrayIcon, state: Arc<StatsState>) {
@@ -174,7 +306,7 @@ fn spawn_poller(app: AppHandle, tray: TrayIcon, state: Arc<StatsState>) {
                 *guard = s.clone();
             }
             let _ = tray.set_title(Some(format_tray_title(&s, connected)));
-            if let Ok(menu) = build_menu(&app, &format_menu_summary(&s), connected) {
+            if let Ok(menu) = build_tray_menu(&app, &format_menu_summary(&s), connected) {
                 let _ = tray.set_menu(Some(menu));
             }
         }
@@ -183,12 +315,6 @@ fn spawn_poller(app: AppHandle, tray: TrayIcon, state: Arc<StatsState>) {
 
 // ── embedded gateway lifecycle ────────────────────────────────────────────────
 
-/// Resolve the path to the bleep-gateway binary, in order of preference:
-///   1. `BLEEP_GATEWAY_BIN` env var (dev override)
-///   2. `<app resource dir>/bleep-gateway` (bundled .app)
-///   3. `<menu-bar exe dir>/bleep-gateway` (sibling binary)
-///   4. `<repo root>/target/release/bleep-gateway` (cargo run from apps/menu-bar)
-/// Returns `None` if no candidate exists.
 fn resolve_gateway_binary(app: &AppHandle) -> Option<PathBuf> {
     if let Ok(p) = std::env::var("BLEEP_GATEWAY_BIN") {
         let path = PathBuf::from(p);
@@ -210,10 +336,6 @@ fn resolve_gateway_binary(app: &AppHandle) -> Option<PathBuf> {
             }
         }
     }
-    // dev fallback — we are at apps/menu-bar/src-tauri/target/debug/bleep-menu-bar
-    // (six parent levels up: bleep-menu-bar → debug → target → src-tauri →
-    //  menu-bar → apps → <repo root>). Look for the gateway in either
-    // target/release or target/debug.
     if let Ok(exe) = std::env::current_exe() {
         let mut p = exe.as_path();
         for _ in 0..6 {
@@ -234,8 +356,6 @@ fn resolve_gateway_binary(app: &AppHandle) -> Option<PathBuf> {
     None
 }
 
-/// Returns true if the gateway is already running (port file exists and the
-/// stats endpoint responds 200).
 async fn gateway_already_running() -> bool {
     let Some(port) = read_proxy_stats_port() else {
         return false;
@@ -295,9 +415,6 @@ fn shutdown_gateway(gateway: &GatewayProcess) {
     }
 }
 
-/// Catch SIGTERM and SIGINT so a `kill <pid>` or Ctrl+C from a terminal
-/// also tears down the embedded gateway. Tauri's RunEvent::Exit fires for
-/// menu-driven quits; this handler covers the raw-signal case.
 #[cfg(unix)]
 fn spawn_signal_handler(gateway: Arc<GatewayProcess>) {
     tauri::async_runtime::spawn(async move {
@@ -323,9 +440,6 @@ fn spawn_signal_handler(_gateway: Arc<GatewayProcess>) {}
 
 // ── live event forwarding ─────────────────────────────────────────────────────
 
-/// Connect to the gateway's event_bus TCP stream and forward each Request
-/// event (with at least one redaction) to the webview as a "redaction" event.
-/// Reconnects with backoff if the connection drops or never establishes.
 fn spawn_event_forwarder(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
         let mut backoff = Duration::from_secs(1);
@@ -346,7 +460,7 @@ fn spawn_event_forwarder(app: AppHandle) {
                     loop {
                         line.clear();
                         match reader.read_line(&mut line).await {
-                            Ok(0) => break, // EOF
+                            Ok(0) => break,
                             Ok(_) => {
                                 let trimmed = line.trim();
                                 if trimmed.is_empty() {
@@ -376,14 +490,28 @@ fn spawn_event_forwarder(app: AppHandle) {
     });
 }
 
+// ── entry point ───────────────────────────────────────────────────────────────
+
 fn run() {
     let state = Arc::new(StatsState {
         last_summary: Mutex::new(Summary::default()),
     });
     let gateway = Arc::new(GatewayProcess::default());
 
+    // when a user double-clicks the .app or launches it from Spotlight (no
+    // --tray flag), the main window should appear. Otherwise we stay tray-only.
+    let start_in_tray = std::env::args().any(|a| a == "--tray");
+
     let app = tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![get_stats_port])
+        .menu(|app| build_app_menu(app))
+        .on_menu_event(handle_app_menu_event)
+        .on_window_event(|window, event| {
+            if let WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                handle_close_request(window);
+            }
+        })
         .setup({
             let state = state.clone();
             let gateway = gateway.clone();
@@ -391,25 +519,33 @@ fn run() {
                 #[cfg(target_os = "macos")]
                 {
                     use tauri::ActivationPolicy;
-                    app.set_activation_policy(ActivationPolicy::Accessory);
+                    let initial = if start_in_tray {
+                        ActivationPolicy::Accessory
+                    } else {
+                        ActivationPolicy::Regular
+                    };
+                    let _ = app.set_activation_policy(initial);
                 }
 
-                let initial_menu = build_menu(
+                let initial_menu = build_tray_menu(
                     app.handle(),
                     "Today: 0   ·   7d: 0   ·   30d: 0   ·   total: 0",
                     false,
                 )?;
-                // text-only tray — no icon, just the live counter title
                 let tray = TrayIconBuilder::with_id("main")
                     .title("Bleep •")
                     .menu(&initial_menu)
-                    .on_menu_event(handle_menu_event)
+                    .on_menu_event(handle_tray_event)
                     .build(app)?;
 
                 spawn_gateway(app.handle().clone(), gateway.clone());
                 spawn_signal_handler(gateway.clone());
                 spawn_poller(app.handle().clone(), tray, state);
                 spawn_event_forwarder(app.handle().clone());
+
+                if !start_in_tray {
+                    show_main_window(app.handle());
+                }
                 Ok(())
             }
         })
@@ -417,10 +553,15 @@ fn run() {
         .expect("error while building tauri application");
 
     let gw_for_exit = gateway.clone();
-    app.run(move |_app, event| {
-        if let RunEvent::Exit = event {
+    app.run(move |app, event| match event {
+        RunEvent::Exit => {
             shutdown_gateway(&gw_for_exit);
         }
+        // macOS: clicking the dock icon when no windows are visible should reopen.
+        RunEvent::Reopen { has_visible_windows, .. } if !has_visible_windows => {
+            show_main_window(app);
+        }
+        _ => {}
     });
 }
 

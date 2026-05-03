@@ -1,7 +1,4 @@
-// Bleep dashboard — vanilla JS, no bundler.
-// - polls the local /stats endpoint for aggregations
-// - listens to Tauri events for live tail (forwarded by the rust side
-//   from the existing event_bus TCP stream)
+// Bleep desktop app — hash-routed SPA. No bundler, no framework.
 
 const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
@@ -9,26 +6,32 @@ const { listen } = window.__TAURI__.event;
 const POLL_MS = 2000;
 const MAX_TAIL = 100;
 
-const els = {
-  conn: document.getElementById("connection"),
-  today: document.getElementById("m-today"),
-  d7: document.getElementById("m-7d"),
-  d30: document.getElementById("m-30d"),
-  total: document.getElementById("m-total"),
-  cats: document.getElementById("categories"),
-  rules: document.getElementById("rules"),
-  tail: document.getElementById("tail"),
-  tailCount: document.getElementById("tail-counter"),
-};
+const ROUTES = ["dashboard", "rules", "settings"];
+const DEFAULT_ROUTE = "dashboard";
 
+let activeRoute = null;
+let pollTimer = null;
+let statsPort = null;
 let tailRowsEmitted = 0;
 
+// ── helpers ────────────────────────────────────────────────────────────
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  }[c]));
+}
+
+function fmtTime(d = new Date()) {
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+
 async function getStatsPort() {
+  if (statsPort) return statsPort;
   try {
-    return await invoke("get_stats_port");
-  } catch (_) {
-    return null;
-  }
+    statsPort = await invoke("get_stats_port");
+    return statsPort;
+  } catch (_) { return null; }
 }
 
 async function fetchJson(port, path) {
@@ -38,19 +41,11 @@ async function fetchJson(port, path) {
 }
 
 function setConnection(connected) {
-  els.conn.textContent = connected ? "● connected" : "○ disconnected";
-  els.conn.classList.toggle("connected", connected);
-  els.conn.classList.toggle("disconnected", !connected);
-}
-
-function renderCounter(el, value) {
-  // tiny number animation for delight without overdoing it
-  if (el.textContent === String(value)) return;
-  el.textContent = value;
-  el.animate(
-    [{ transform: "scale(1.08)" }, { transform: "scale(1)" }],
-    { duration: 220, easing: "ease-out" }
-  );
+  const el = document.getElementById("connection");
+  if (!el) return;
+  el.textContent = connected ? "● connected" : "○ disconnected";
+  el.classList.toggle("connected", connected);
+  el.classList.toggle("disconnected", !connected);
 }
 
 function categoryClass(category) {
@@ -66,34 +61,133 @@ function renderBars(container, items, labelKey, secondaryKey, classKey) {
     return;
   }
   const max = Math.max(...items.map((i) => i.count));
-  const html = items
-    .map((i) => {
-      const pct = max > 0 ? Math.round((i.count / max) * 100) : 0;
-      const klass = classKey ? classKey(i) : "cat-other";
-      const label = secondaryKey
-        ? `<span class="bar-label">${escapeHtml(i[labelKey])} <span class="dim">/ ${escapeHtml(i[secondaryKey])}</span></span>`
-        : `<span class="bar-label">${escapeHtml(i[labelKey])}</span>`;
-      return `<div class="bar ${klass}" style="--bar-pct: ${pct}%">${label}<span class="bar-count">${i.count}</span></div>`;
-    })
-    .join("");
+  const html = items.map((i) => {
+    const pct = max > 0 ? Math.round((i.count / max) * 100) : 0;
+    const klass = classKey ? classKey(i) : "cat-other";
+    const label = secondaryKey
+      ? `<span class="bar-label">${escapeHtml(i[labelKey])} <span class="dim">/ ${escapeHtml(i[secondaryKey])}</span></span>`
+      : `<span class="bar-label">${escapeHtml(i[labelKey])}</span>`;
+    return `<div class="bar ${klass}" style="--bar-pct: ${pct}%">${label}<span class="bar-count">${i.count}</span></div>`;
+  }).join("");
   container.innerHTML = html;
 }
 
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, (c) => ({
-    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
-  }[c]));
+function renderCounter(el, value) {
+  if (!el || el.textContent === String(value)) return;
+  el.textContent = value;
+  el.animate(
+    [{ transform: "scale(1.08)" }, { transform: "scale(1)" }],
+    { duration: 220, easing: "ease-out" }
+  );
 }
 
-function fmtTime(d = new Date()) {
-  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+// ── routing ────────────────────────────────────────────────────────────
+
+function currentRoute() {
+  const r = (location.hash || "").replace(/^#/, "");
+  return ROUTES.includes(r) ? r : DEFAULT_ROUTE;
 }
 
-function appendTailRow(ev) {
-  // remove the empty placeholder once we have real data
-  const empty = els.tail.querySelector(".empty");
+function navigateTo(route) {
+  if (!ROUTES.includes(route)) route = DEFAULT_ROUTE;
+  if (location.hash !== `#${route}`) location.hash = `#${route}`;
+  else renderRoute(route);
+}
+
+function highlightSidebar(route) {
+  document.querySelectorAll(".sidebar a").forEach((a) => {
+    a.classList.toggle("active", a.dataset.route === route);
+  });
+}
+
+function renderRoute(route) {
+  if (activeRoute === route) return;
+  activeRoute = route;
+  highlightSidebar(route);
+
+  const tpl = document.getElementById(`route-${route}`);
+  const content = document.getElementById("content");
+  content.innerHTML = "";
+  if (tpl) content.appendChild(tpl.content.cloneNode(true));
+
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  if (route === "dashboard") {
+    refreshDashboard();
+    pollTimer = setInterval(refreshDashboard, POLL_MS);
+  } else if (route === "rules") {
+    refreshRules();
+    pollTimer = setInterval(refreshRules, POLL_MS);
+  } else if (route === "settings") {
+    refreshSettings();
+  }
+}
+
+// ── route: dashboard ───────────────────────────────────────────────────
+
+async function refreshDashboard() {
+  const port = await getStatsPort();
+  if (!port) { setConnection(false); return; }
+  try {
+    const [summary, categories, rules] = await Promise.all([
+      fetchJson(port, "/stats"),
+      fetchJson(port, "/stats/categories"),
+      fetchJson(port, "/stats/rules?limit=10"),
+    ]);
+    setConnection(true);
+    renderCounter(document.getElementById("m-today"), summary.last_24h);
+    renderCounter(document.getElementById("m-7d"),    summary.last_7d);
+    renderCounter(document.getElementById("m-30d"),   summary.last_30d);
+    renderCounter(document.getElementById("m-total"), summary.total);
+    const cats = document.getElementById("categories");
+    const rs = document.getElementById("rules");
+    if (cats) renderBars(cats, categories, "subcategory", "category", (i) => categoryClass(i.category));
+    if (rs)   renderBars(rs, rules, "rule_id", null, () => "cat-other");
+  } catch (e) {
+    setConnection(false);
+    console.warn("dashboard refresh failed:", e);
+  }
+}
+
+// ── route: rules ───────────────────────────────────────────────────────
+
+async function refreshRules() {
+  const port = await getStatsPort();
+  if (!port) { setConnection(false); return; }
+  try {
+    const rules = await fetchJson(port, "/stats/rules?limit=200");
+    setConnection(true);
+    const el = document.getElementById("rules-list");
+    if (el) renderBars(el, rules, "rule_id", null, () => "cat-other");
+  } catch (e) {
+    setConnection(false);
+    console.warn("rules refresh failed:", e);
+  }
+}
+
+// ── route: settings ────────────────────────────────────────────────────
+
+async function refreshSettings() {
+  const port = await getStatsPort();
+  const portEl = document.getElementById("s-stats-port");
+  const evPortEl = document.getElementById("s-events-port");
+  const statusEl = document.getElementById("s-status");
+  if (portEl) portEl.textContent = port ? `127.0.0.1:${port}` : "—";
+  if (statusEl) statusEl.textContent = port ? "Connected" : "Not connected";
+  // events port is read by the Rust side only — we surface its existence
+  if (evPortEl) evPortEl.textContent = "(see /tmp/bleep-events.port)";
+  setConnection(!!port);
+}
+
+// ── live tail (cross-route — appends only when dashboard is mounted) ──
+
+listen("redaction", (e) => {
+  if (activeRoute !== "dashboard") return;
+  const tail = document.getElementById("tail");
+  if (!tail) return;
+  const empty = tail.querySelector(".empty");
   if (empty) empty.remove();
 
+  const ev = e.payload;
   const redactedCount = (ev.redacted || []).length;
   const top = (ev.redacted || [])
     .slice(0, 3)
@@ -111,45 +205,15 @@ function appendTailRow(ev) {
     <span class="tail-uri">${escapeHtml(ev.uri || "")}</span>
     <span class="tail-redactions">${summary}</span>
   `;
-  els.tail.prepend(row);
-
-  // cap memory
-  while (els.tail.children.length > MAX_TAIL) els.tail.lastChild.remove();
+  tail.prepend(row);
+  while (tail.children.length > MAX_TAIL) tail.lastChild.remove();
 
   tailRowsEmitted += 1;
-  els.tailCount.textContent = `· ${tailRowsEmitted} events`;
-}
-
-async function refresh() {
-  const port = await getStatsPort();
-  if (!port) {
-    setConnection(false);
-    return;
-  }
-  try {
-    const [summary, categories, rules] = await Promise.all([
-      fetchJson(port, "/stats"),
-      fetchJson(port, "/stats/categories"),
-      fetchJson(port, "/stats/rules?limit=20"),
-    ]);
-    setConnection(true);
-    renderCounter(els.today, summary.last_24h);
-    renderCounter(els.d7,    summary.last_7d);
-    renderCounter(els.d30,   summary.last_30d);
-    renderCounter(els.total, summary.total);
-    renderBars(els.cats, categories, "subcategory", "category", (i) => categoryClass(i.category));
-    renderBars(els.rules, rules, "rule_id", null, () => "cat-other");
-  } catch (e) {
-    setConnection(false);
-    console.warn("refresh failed:", e);
-  }
-}
-
-// live tail: rust side forwards event_bus messages as Tauri "redaction" events
-listen("redaction", (e) => {
-  appendTailRow(e.payload);
+  const counter = document.getElementById("tail-counter");
+  if (counter) counter.textContent = `· ${tailRowsEmitted} events`;
 }).catch((err) => console.warn("listen failed:", err));
 
-// initial + periodic poll
-refresh();
-setInterval(refresh, POLL_MS);
+// ── boot ───────────────────────────────────────────────────────────────
+
+window.addEventListener("hashchange", () => renderRoute(currentRoute()));
+renderRoute(currentRoute());

@@ -2,56 +2,115 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Bleep Dashboard</title>
+  <title>Bleep</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <header>
-    <h1>Bleep <span class="dim">redaction dashboard</span></h1>
-    <div id="connection" class="status">connecting…</div>
-  </header>
+  <aside class="sidebar">
+    <div class="brand">Bleep</div>
+    <nav>
+      <a href="#dashboard" data-route="dashboard">
+        <span class="dot"></span>Dashboard
+      </a>
+      <a href="#rules" data-route="rules">
+        <span class="dot"></span>Rules
+      </a>
+      <a href="#settings" data-route="settings">
+        <span class="dot"></span>Settings
+      </a>
+    </nav>
+    <div class="sidebar-footer">
+      <div id="connection" class="status">connecting…</div>
+      <div class="dim small">v0.1.0</div>
+    </div>
+  </aside>
 
-  <section class="cards">
-    <div class="card">
-      <div class="card-label">today</div>
-      <div class="card-value" id="m-today">0</div>
-    </div>
-    <div class="card">
-      <div class="card-label">last 7 days</div>
-      <div class="card-value" id="m-7d">0</div>
-    </div>
-    <div class="card">
-      <div class="card-label">last 30 days</div>
-      <div class="card-value" id="m-30d">0</div>
-    </div>
-    <div class="card card-total">
-      <div class="card-label">all time</div>
-      <div class="card-value" id="m-total">0</div>
-    </div>
-  </section>
+  <main class="content" id="content"></main>
 
-  <section class="grid">
-    <div class="panel">
-      <h2>By category</h2>
-      <div id="categories" class="bar-chart">
-        <div class="empty">no redactions yet</div>
+  <!-- ── route templates ─────────────────────────────────────────────── -->
+
+  <template id="route-dashboard">
+    <header>
+      <h1>Dashboard</h1>
+      <div class="dim">live redaction activity</div>
+    </header>
+
+    <section class="cards">
+      <div class="card">
+        <div class="card-label">today</div>
+        <div class="card-value" id="m-today">0</div>
       </div>
-    </div>
-
-    <div class="panel">
-      <h2>Top rules</h2>
-      <div id="rules" class="bar-chart">
-        <div class="empty">no redactions yet</div>
+      <div class="card">
+        <div class="card-label">last 7 days</div>
+        <div class="card-value" id="m-7d">0</div>
       </div>
-    </div>
-  </section>
+      <div class="card">
+        <div class="card-label">last 30 days</div>
+        <div class="card-value" id="m-30d">0</div>
+      </div>
+      <div class="card card-total">
+        <div class="card-label">all time</div>
+        <div class="card-value" id="m-total">0</div>
+      </div>
+    </section>
 
-  <section class="panel live">
-    <h2>Live tail <span class="dim" id="tail-counter"></span></h2>
-    <div id="tail" class="tail">
-      <div class="empty">waiting for the next redaction…</div>
-    </div>
-  </section>
+    <section class="grid">
+      <div class="panel">
+        <h2>By category</h2>
+        <div id="categories" class="bar-chart">
+          <div class="empty">no redactions yet</div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Top rules</h2>
+        <div id="rules" class="bar-chart">
+          <div class="empty">no redactions yet</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel live">
+      <h2>Live tail <span class="dim" id="tail-counter"></span></h2>
+      <div id="tail" class="tail">
+        <div class="empty">waiting for the next redaction…</div>
+      </div>
+    </section>
+  </template>
+
+  <template id="route-rules">
+    <header>
+      <h1>Rules</h1>
+      <div class="dim">most-triggered rules across all time</div>
+    </header>
+    <section class="panel">
+      <div id="rules-list" class="bar-chart tall">
+        <div class="empty">loading…</div>
+      </div>
+    </section>
+  </template>
+
+  <template id="route-settings">
+    <header>
+      <h1>Settings</h1>
+      <div class="dim">connection and runtime info</div>
+    </header>
+    <section class="panel">
+      <h2>Gateway</h2>
+      <div class="kv">
+        <div>Stats endpoint</div><div id="s-stats-port" class="mono">—</div>
+        <div>Events endpoint</div><div id="s-events-port" class="mono">—</div>
+        <div>Status</div><div id="s-status">—</div>
+      </div>
+    </section>
+    <section class="panel">
+      <h2>About</h2>
+      <div class="kv">
+        <div>Version</div><div class="mono">0.1.0</div>
+        <div>Build</div><div class="mono">debug</div>
+      </div>
+    </section>
+  </template>
 
   <script src="app.js"></script>
 </body>
