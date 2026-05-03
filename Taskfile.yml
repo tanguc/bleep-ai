@@ -41,16 +41,30 @@ tasks:
       - cargo run --bin build-rules -- --limit 30
 
   run:
-    desc: run gateway (debug build)
+    desc: run gateway (debug build) with the curated 100-rule set for fast startup
     env:
       RUST_LOG: debug
       BLEEP_LOG_REQUESTS: "1"
       BLEEP_LOG_PATH: /tmp
+      BLEEP_SPAWN_GATEWAY: false
+      # dev startup: load the static curated 100-rule set instead of the
+      # embedded 401-rule full set. ~75% faster regex-compile pass.
+      BLEEP_RULES_FILE: rules/combined-100.yaml
+    cmds:
+      - cargo run --bin {{.BIN}} -- {{.CLI_ARGS}}
+
+  run:full:
+    desc: run gateway (debug build) with the FULL 401-rule set (slower startup)
+    env:
+      RUST_LOG: debug
+      BLEEP_LOG_REQUESTS: "1"
+      BLEEP_LOG_PATH: /tmp
+      BLEEP_SPAWN_GATEWAY: false
     cmds:
       - cargo run --bin {{.BIN}} -- {{.CLI_ARGS}}
 
   run:release:
-    desc: run gateway (release build)
+    desc: run gateway (release build) — uses the embedded full 401-rule set
     env:
       RUST_LOG: info
     cmds:

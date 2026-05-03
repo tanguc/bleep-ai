@@ -1,0 +1,1824 @@
+# This file is generated from combined.yaml — curated subset of 100 rules
+# for fast dev startup. Use via:  BLEEP_RULES_FILE=rules/combined-100.yaml
+# (production uses combined.yaml with the full 401 rules.)
+#
+# Selection:
+#   - all hand-authored rules
+#   - all typed (non-"generic") subcategory rules
+#   - up to ~20 well-known vendor rules from the generic bucket
+#
+# Attribution:
+# - secrets-patterns-db (CC-BY 4.0): https://github.com/mazen160/secrets-patterns-db
+rules:
+- id: gl.age-secret-key
+  name: Discovered a potential Age encryption tool secret key, risking data decryption
+    and unauthorized access to sensitive information.
+  category: secret
+  subcategory: private-key
+  source: gitleaks
+  confidence: high
+  regex: AGE-SECRET-KEY-1[QPZRY9X8GF2TVDW0S3JN54KHCE6MUA7L]{58}
+  keywords:
+  - age-secret-key-1
+  entropy: null
+  tags: []
+  checksum_type: null
+  replacement_type: faker_api_key
+  description: Discovered a potential Age encryption tool secret key, risking data
+    decryption and unauthorized access to sensitive information.
+  severity: high
+- id: gl.anthropic-admin-api-key
+  name: Detected an Anthropic Admin API Key, risking unauthorized access to administrative
+    functions and sensitive AI model configurations.
+  category: secret
+  subcategory: anthropic
+  source: gitleaks
+  confidence: high
+  regex: \b(sk-ant-admin01-[a-zA-Z0-9_\-]{93}AA)(?:[\x60'"\s;]|\\[nr]|$)
+  keywords:
+  - sk-ant-admin01
+  entropy: null
+  tags: []
+  checksum_type: null
+  replacement_type: faker_api_key
+  description: Detected an Anthropic Admin API Key, risking unauthorized access to
+    administrative functions and sensitive AI model configurations.
+  severity: high
+- id: gl.aws-amazon-bedrock-api-key-long-lived
+  name: Identified a pattern that may indicate long-lived Amazon Bedrock API keys,
+    risking unauthorized Amazon Bedrock usage
+  category: secret
+  subcategory: aws
+  source: gitleaks
+  confidence: medium
+  regex: \b(ABSK[A-Za-z0-9+/]{109,269}={0,2})(?:[\x60'"\s;]|\\[nr]|$)
+  keywords:
+  - absk
+  entropy: 3.0
+  tags: []
+  checksum_type: null
+  replacement_type: faker_aws_key
+  description: Identified a pattern that may indicate long-lived Amazon Bedrock API
+    keys, risking unauthorized Amazon Bedrock usage
+  severity: medium
+- id: gl.aws-amazon-bedrock-api-key-short-lived
+  name: Identified a pattern that may indicate short-lived Amazon Bedrock API keys,
+    risking unauthorized Amazon Bedrock usage
+  category: secret
+  subcategory: aws
+  source: gitleaks
+  confidence: medium
+  regex: bedrock-api-key-YmVkcm9jay5hbWF6b25hd3MuY29t
+  keywords:
+  - bedrock-api-key-
+  entropy: 3.0
+  tags: []
+  checksum_type: null
+  replacement_type: faker_aws_key
+  description: Identified a pattern that may indicate short-lived Amazon Bedrock API
+    keys, risking unauthorized Amazon Bedrock usage
+  severity: medium
+- id: gl.azure-ad-client-secret
+  name: Azure AD Client Secret
+  category: secret
+  subcategory: generic
+  source: gitleaks
+  confidence: medium
+  regex: (?:^|[\\'"\x60\s>=:(,)])([a-zA-Z0-9_~.]{3}\dQ~[a-zA-Z0-9_~.-]{31,34})(?:$|[\\'"\x60\s<),])
+  keywords:
+  - q~
+  entropy: 3.0
+  tags: []
+  checksum_type: null
+  replacement_type: faker_api_key
+  description: Azure AD Client Secret
+  severity: medium
+- id: gl.cloudflare-api-key
+  name: Detected a Cloudflare API Key, potentially compromising cloud application
+    deployments and operational security.
+  category: secret
+  subcategory: generic
+  source: gitleaks
+  confidence: medium
+  regex: (?i)[\w.-]{0,50}?(?:cloudflare)(?:[ \t\w.-]{0,20})[\s'"]{0,3}(?:=|>|:{1,3}=|\|\||:|=>|\?=|,)[\x60'"\s=]{0,5}([a-z0-9_-]{40})(?:[\x60'"\s;]|\\[nr]|$)
+  keywords:
+  - cloudflare
+  entropy: 2.0
+  tags: []
+  checksum_type: null
+  replacement_type: faker_api_key
+  description: Detected a Cloudflare API Key, potentially compromising cloud application
+    deployments and operational security.
+  severity: medium
+- id: gl.cloudflare-global-api-key
+  name: Detected a Cloudflare Global API Key, potentially compromising cloud application
+    deployments and operational security.
+  category: secret
+  subcategory: generic
+  source: gitleaks
+  confidence: medium
+  regex: (?i)[\w.-]{0,50}?(?:cloudflare)(?:[ \t\w.-]{0,20})[\s'"]{0,3}(?:=|>|:{1,3}=|\|\||:|=>|\?=|,)[\x60'"\s=]{0,5}([a-f0-9]{37})(?:[\x60'"\s;]|\\[nr]|$)
+  keywords:
+  - cloudflare
+  entropy: 2.0
+  tags: []
+  checksum_type: null
+  replacement_type: faker_api_key
+  description: Detected a Cloudflare Global API Key, potentially compromising cloud
+    application deployments and operational security.
+  severity: medium
+- id: gl.cloudflare-origin-ca-key
+  name: Detected a Cloudflare Origin CA Key, potentially compromising cloud application
+    deployments and operational security.
+  category: secret
+  subcategory: generic
+  source: gitleaks
+  confidence: medium
+  regex: \b(v1\.0-[a-f0-9]{24}-[a-f0-9]{146})(?:[\x60'"\s;]|\\[nr]|$)
+  keywords:
+  - cloudflare
+  - v1.0-
+  entropy: 2.0
+  tags: []
+  checksum_type: null
+  replacement_type: faker_api_key
+  description: Detected a Cloudflare Origin CA Key, potentially compromising cloud
+    application deployments and operational security.
+  severity: medium
+- id: gl.datadog-access-token
+  name: Detected a Datadog Access Token, potentially risking monitoring and analytics
+    data exposure and manipulation.
+  category: secret
+  subcategory: generic
+  source: gitleaks
+  confidence: medium
+  regex: (?i)[\w.-]{0,50}?(?:datadog)(?:[ \t\w.-]{0,20})[\s'"]{0,3}(?:=|>|:{1,3}=|\|\||:|=>|\?=|,)[\x60'"\s=]{0,5}([a-z0-9]{40})(?:[\x60'"\s;]|\\[nr]|$)
+  keywords:
+  - datadog
+  entropy: null
+  tags: []
+  checksum_type: null
+  replacement_type: faker_api_key
+  description: Detected a Datadog Access Token, potentially risking monitoring and
+    analytics data exposure and manipulation.
+  severity: medium
+- id: gl.doppler-api-token
+  name: Discovered a Doppler API token, posing a risk to environment and secrets management
+    security.
+  category: secret
+  subcategory: generic
+  source: gitleaks
+  confidence: medium
+  regex: dp\.pt\.(?i)[a-z0-9]{43}
+  keywords:
+  - dp.pt.
+  entropy: 2.0
+  tags: []
+  checksum_type: null
+  replacement_type: faker_api_key
+  description: Discovered a Doppler API token, posing a risk to environment and secrets
+    management security.
+  severity: medium
+- id: gl.gcp-api-key
+  name: Uncovered a GCP API key, which could lead to unauthorized access to Google
+    Cloud services and data breaches.
+  category: secret
+  subcategory: generic
+  source: gitleaks
+  confidence: high
+  regex: \b(AIza[\w-]{35})(?:[\x60'"\s;]|\\[nr]|$)
+  keywords:
+  - aiza
+  entropy: 4.0
+  tags: []
+  checksum_type: null
+  replacement_type: faker_api_key
+  description: Uncovered a GCP API key, which could lead to unauthorized access to
+    Google Cloud services and data breaches.
+  severity: high
+- id: gl.github-fine-grained-pat
+  name: Found a GitHub Fine-Grained Personal Access Token, risking unauthorized repository
+    access and code manipulation.
+  category: secret
+  subcategory: github
+  source: gitleaks
+  confidence: high
+  regex: github_pat_\w{82}
+  keywords:
+  - github_pat_
+  entropy: 3.0
+  tags: []
+  checksum_type: null
+  replacement_type: faker_github_pat
+  description: Found a GitHub Fine-Grained Personal Access Token, risking unauthorized
+    repository access and code manipulation.
+  severity: high
+- id: gl.gitlab-cicd-job-token
+  name: Identified a GitLab CI/CD Job Token, potential access to projects and some
+    APIs on behalf of a user while the CI job is running.
+  category: secret
+  subcategory: gitlab
+  source: gitleaks
+  confidence: medium
+  regex: glcbt-[0-9a-zA-Z]{1,5}_[0-9a-zA-Z_-]{20}
+  keywords:
+  - glcbt-
+  entropy: 3.0
+  tags: []
+  checksum_type: null
+  replacement_type: faker_api_key
+  description: Identified a GitLab CI/CD Job Token, potential access to projects and
+    some APIs on behalf of a user while the CI job is running.
+  severity: medium
+- id: gl.gitlab-deploy-token
+  name: Identified a GitLab Deploy Token, risking access to repositories, packages
+    and containers with write access.
+  category: secret
+  subcategory: gitlab
+  source: gitleaks
+  confidence: medium
+  regex: gldt-[0-9a-zA-Z_\-]{20}
+  keywords:
+  - gldt-
+  entropy: 3.0
+  tags: []
+  checksum_type: null
+  replacement_type: faker_api_key
+  description: Identified a GitLab Deploy Token, risking access to repositories, packages
+    and containers with write access.
+  severity: medium
+- id: gl.gitlab-feed-token
+  name: Identified a GitLab feed token, risking exposure of user data.
+  category: secret
+  subcategory: gitlab
+  source: gitleaks
+  confidence: medium
+  regex: glft-[0-9a-zA-Z_\-]{20}
+  keywords:
+  - glft-
+  entropy: 3.0
+  tags: []
+  checksum_type: null
+  replacement_type: faker_api_key
+  description: Identified a GitLab feed token, risking exposure of user data.
+  severity: medium
+- id: gl.gitlab-incoming-mail-token
+  name: Identified a GitLab incoming mail token, risking manipulation of data sent
+    by mail.
+  category: secret
+  subcategory: gitlab
+  source: gitleaks
+  confidence: medium
+  regex: glimt-[0-9a-zA-Z_\-]{25}
+  keywords:
+  - glimt-
+  entropy: 3.0
+  tags: []
+  checksum_type: null
+  replacement_type: faker_api_key
+  description: Identified a GitLab incoming mail token, risking manipulation of data
+    sent by mail.
+  severity: medium
+- id: gl.gitlab-kubernetes-agent-token
+  name: Identified a GitLab Kubernetes Agent token, risking access to repos and registry
+    of projects connected via agent.
+  category: secret
+  subcategory: gitlab
+  source: gitleaks
+  confidence: medium
+  regex: glagent-[0-9a-zA-Z_\-]{50}
+  keywords:
+  - glagent-
+  entropy: 3.0
+  tags: []
+  checksum_type: null
+  replacement_type: faker_api_key
+  description: Identified a GitLab Kubernetes Agent token, risking access to repos
+    and registry of projects connected via agent.
+  severity: medium
+- id: gl.gitlab-oauth-app-secret
+  name: Identified a GitLab OIDC Application Secret, risking access to apps using
+    GitLab as authentication provider.
+  category: secret
+  subcategory: gitlab
+  source: gitleaks
+  confidence: medium
+  regex: gloas-[0-9a-zA-Z_\-]{64}
+  keywords:
+  - gloas-
+  entropy: 3.0
+  tags: []
+  checksum_type: null
+  replacement_type: faker_api_key
+  description: Identified a GitLab OIDC Application Secret, risking access to apps
+    using GitLab as authentication provider.
+  severity: medium
+- id: gl.gitlab-pat-routable
+  name: Identified a GitLab Personal Access Token (routable), risking unauthorized
+    access to GitLab repositories and codebase exposure.
+  category: secret
+  subcategory: gitlab
+  source: gitleaks
+  confidence: high
+  regex: \bglpat-[0-9a-zA-Z_-]{27,300}\.[0-9a-z]{2}[0-9a-z]{7}\b
+  keywords:
+  - glpat-
+  entropy: 4.0
+  tags: []
+  checksum_type: null
+  replacement_type: faker_api_key
+  description: Identified a GitLab Personal Access Token (routable), risking unauthorized
+    access to GitLab repositories and codebase exposure.
+  severity: high
+- id: gl.gitlab-ptt
+  name: Found a GitLab Pipeline Trigger Token, potentially compromising continuous
+    integration workflows and project security.
+  category: secret
+  subcategory: gitlab
+  source: gitleaks
+  confidence: high
+  regex: glptt-[0-9a-f]{40}
+  keywords:
+  - glptt-
+  entropy: 3.0
+  tags: []
+  checksum_type: null
+  replacement_type: faker_api_key
+  description: Found a GitLab Pipeline Trigger Token, potentially compromising continuous
+    integration workflows and project security.
+  severity: high
+- id: gl.gitlab-rrt
+  name: Discovered a GitLab Runner Registration Token, posing a risk to CI/CD pipeline
+    integrity and unauthorized access.
+  category: secret
+  subcategory: gitlab
+  source: gitleaks
+  confidence: high
+  regex: GR1348941[\w-]{20}
+  keywords:
+  - gr1348941
+  entropy: 3.0
+  tags: []
+  checksum_type: null
+  replacement_type: faker_api_key
+  description: Discovered a GitLab Runner Registration Token, posing a risk to CI/CD
+    pipeline integrity and unauthorized access.
+  severity: high
+- id: gl.gitlab-runner-authentication-token
+  name: Discovered a GitLab Runner Authentication Token, posing a risk to CI/CD pipeline
+    integrity and unauthorized access.
+  category: secret
+  subcategory: gitlab
+  source: gitleaks
+  confidence: medium
+  regex: glrt-[0-9a-zA-Z_\-]{20}
+  keywords:
+  - glrt-
+  entropy: 3.0
+  tags: []
+  checksum_type: null
+  replacement_type: faker_api_key
+  description: Discovered a GitLab Runner Authentication Token, posing a risk to CI/CD
+    pipeline integrity and unauthorized access.
+  severity: medium
+- id: gl.gitlab-scim-token
+  name: Discovered a GitLab SCIM Token, posing a risk to unauthorized access for a
+    organization or instance.
+  category: secret
+  subcategory: gitlab
+  source: gitleaks
+  confidence: medium
+  regex: glsoat-[0-9a-zA-Z_\-]{20}
+  keywords:
+  - glsoat-
+  entropy: 3.0
+  tags: []
+  checksum_type: null
+  replacement_type: faker_api_key
+  description: Discovered a GitLab SCIM Token, posing a risk to unauthorized access
+    for a organization or instance.
+  severity: medium
+- id: gl.gitlab-session-cookie
+  name: Discovered a GitLab Session Cookie, posing a risk to unauthorized access to
+    a user account.
+  category: secret
+  subcategory: gitlab
+  source: gitleaks
+  confidence: medium
+  regex: _gitlab_session=[0-9a-z]{32}
+  keywords:
+  - _gitlab_session=
+  entropy: 3.0
+  tags: []
+  checksum_type: null
+  replacement_type: faker_api_key
+  description: Discovered a GitLab Session Cookie, posing a risk to unauthorized access
+    to a user account.
+  severity: medium
+- id: gl.jwt-base64
+  name: Detected a Base64-encoded JSON Web Token, posing a risk of exposing encoded
+    authentication and data exchange information.
+  category: secret
+  subcategory: jwt
+  source: gitleaks
+  confidence: medium
+  regex: \bZXlK(?:(?P<alg>aGJHY2lPaU)|(?P<apu>aGNIVWlPaU)|(?P<apv>aGNIWWlPaU)|(?P<aud>aGRXUWlPaU)|(?P<b64>aU5qUWlP)|(?P<crit>amNtbDBJanBi)|(?P<cty>amRIa2lPaU)|(?P<epk>bGNHc2lPbn)|(?P<enc>bGJtTWlPaU)|(?P<jku>cWEzVWlPaU)|(?P<jwk>cWQyc2lPb)|(?P<iss>cGMzTWlPaU)|(?P<iv>cGRpSTZJ)|(?P<kid>cmFXUWlP)|(?P<key_ops>clpYbGZiM0J6SWpwY)|(?P<kty>cmRIa2lPaUp)|(?P<nonce>dWIyNWpaU0k2)|(?P<p2c>d01tTWlP)|(?P<p2s>d01uTWlPaU)|(?P<ppt>d2NIUWlPaU)|(?P<sub>emRXSWlPaU)|(?P<svt>emRuUWlP)|(?P<tag>MFlXY2lPaU)|(?P<typ>MGVYQWlPaUp)|(?P<url>MWNtd2l)|(?P<use>MWMyVWlPaUp)|(?P<ver>MlpYSWlPaU)|(?P<version>MlpYSnphVzl1SWpv)|(?P<x>NElqb2)|(?P<x5c>NE5XTWlP)|(?P<x5t>NE5YUWlPaU)|(?P<x5ts256>NE5YUWpVekkxTmlJNkl)|(?P<x5u>NE5YVWlPaU)|(?P<zip>NmFYQWlPaU))[a-zA-Z0-9\/\\_+\-\r\n]{40,}={0,2}
+  keywords:
+  - zxlk
+  entropy: 2.0
+  tags: []
+  checksum_type: null
+  replacement_type: faker_jwt
+  description: Detected a Base64-encoded JSON Web Token, posing a risk of exposing
+    encoded authentication and data exchange information.
+  severity: medium
+- id: gl.mailgun-private-api-token
+  name: Found a Mailgun private API token, risking unauthorized email service operations
+    and data breaches.
+  category: secret
+  subcategory: generic
+  source: gitleaks
+  confidence: medium
+  regex: (?i)[\w.-]{0,50}?(?:mailgun)(?:[ \t\w.-]{0,20})[\s'"]{0,3}(?:=|>|:{1,3}=|\|\||:|=>|\?=|,)[\x60'"\s=]{0,5}(key-[a-f0-9]{32})(?:[\x60'"\s;]|\\[nr]|$)
+  keywords:
+  - mailgun
+  entropy: null
+  tags: []
+  checksum_type: null
+  replacement_type: faker_api_key
+  description: Found a Mailgun private API token, risking unauthorized email service
+    operations and data breaches.
+  severity: medium
+- id: gl.mailgun-pub-key
+  name: Discovered a Mailgun public validation key, which could expose email verification
+    processes and associated data.
+  category: secret
+  subcategory: generic
+  source: gitleaks
+  confidence: medium
+  regex: (?i)[\w.-]{0,50}?(?:mailgun)(?:[ \t\w.-]{0,20})[\s'"]{0,3}(?:=|>|:{1,3}=|\|\||:|=>|\?=|,)[\x60'"\s=]{0,5}(pubkey-[a-f0-9]{32})(?:[\x60'"\s;]|\\[nr]|$)
+  keywords:
+  - mailgun
+  entropy: null
+  tags: []
+  checksum_type: null
+  replacement_type: faker_api_key
+  description: Discovered a Mailgun public validation key, which could expose email
+    verification processes and associated data.
+  severity: medium
+- id: gl.mailgun-signing-key
+  name: Uncovered a Mailgun webhook signing key, potentially compromising email automation
+    and data integrity.
+  category: secret
+  subcategory: generic
+  source: gitleaks
+  confidence: medium
+  regex: (?i)[\w.-]{0,50}?(?:mailgun)(?:[ \t\w.-]{0,20})[\s'"]{0,3}(?:=|>|:{1,3}=|\|\||:|=>|\?=|,)[\x60'"\s=]{0,5}([a-h0-9]{32}-[a-h0-9]{8}-[a-h0-9]{8})(?:[\x60'"\s;]|\\[nr]|$)
+  keywords:
+  - mailgun
+  entropy: null
+  tags: []
+  checksum_type: null
+  replacement_type: faker_api_key
+  description: Uncovered a Mailgun webhook signing key, potentially compromising email
+    automation and data integrity.
+  severity: medium
+- id: gl.npm-access-token
+  name: Uncovered an npm access token, potentially compromising package management
+    and code repository access.
+  category: secret
+  subcategory: npm
+  source: gitleaks
+  confidence: high
+  regex: (?i)\b(npm_[a-z0-9]{36})(?:[\x60'"\s;]|\\[nr]|$)
+  keywords:
+  - npm_
+  entropy: 2.0
+  tags: []
+  checksum_type: null
+  replacement_type: faker_api_key
+  description: Uncovered an npm access token, potentially compromising package management
+    and code repository access.
+  severity: high
+- id: gl.openai-api-key
+  name: Found an OpenAI API Key, posing a risk of unauthorized access to AI services
+    and data manipulation.
+  category: secret
+  subcategory: openai
+  source: gitleaks
+  confidence: medium
+  regex: \b(sk-(?:proj|svcacct|admin)-(?:[A-Za-z0-9_-]{74}|[A-Za-z0-9_-]{58})T3BlbkFJ(?:[A-Za-z0-9_-]{74}|[A-Za-z0-9_-]{58})\b|sk-[a-zA-Z0-9]{20}T3BlbkFJ[a-zA-Z0-9]{20})(?:[\x60'"\s;]|\\[nr]|$)
+  keywords:
+  - t3blbkfj
+  entropy: 3.0
+  tags: []
+  checksum_type: null
+  replacement_type: faker_api_key
+  description: Found an OpenAI API Key, posing a risk of unauthorized access to AI
+    services and data manipulation.
+  severity: medium
+- id: gl.private-key
+  name: Identified a Private Key, which may compromise cryptographic security and
+    sensitive data encryption.
+  category: secret
+  subcategory: private-key
+  source: gitleaks
+  confidence: medium
+  regex: '(?i)-----BEGIN[ A-Z0-9_-]{0,100}PRIVATE KEY(?: BLOCK)?-----[\s\S-]{64,}?KEY(?:
+    BLOCK)?-----'
+  keywords:
+  - '-----begin'
+  entropy: null
+  tags: []
+  checksum_type: null
+  replacement_type: faker_api_key
+  description: Identified a Private Key, which may compromise cryptographic security
+    and sensitive data encryption.
+  severity: medium
+- id: gl.pypi-upload-token
+  name: Discovered a PyPI upload token, potentially compromising Python package distribution
+    and repository integrity.
+  category: secret
+  subcategory: pypi
+  source: gitleaks
+  confidence: high
+  regex: pypi-AgEIcHlwaS5vcmc[\w-]{50,1000}
+  keywords:
+  - pypi-ageichlwas5vcmc
+  entropy: 3.0
+  tags: []
+  checksum_type: null
+  replacement_type: faker_api_key
+  description: Discovered a PyPI upload token, potentially compromising Python package
+    distribution and repository integrity.
+  severity: high
+- id: gl.sendgrid-api-token
+  name: Detected a SendGrid API token, posing a risk of unauthorized email service
+    operations and data exposure.
+  category: secret
+  subcategory: sendgrid
+  source: gitleaks
+  confidence: medium
+  regex: \b(SG\.(?i)[a-z0-9=_\-\.]{66})(?:[\x60'"\s;]|\\[nr]|$)
+  keywords:
+  - sg.
+  entropy: 2.0
+  tags: []
+  checksum_type: null
+  replacement_type: faker_api_key
+  description: Detected a SendGrid API token, posing a risk of unauthorized email
+    service operations and data exposure.
+  severity: medium
+- id: gl.sentry-access-token
+  name: Found a Sentry.io Access Token (old format), risking unauthorized access to
+    error tracking services and sensitive application data.
+  category: secret
+  subcategory: generic
+  source: gitleaks
+  confidence: medium
+  regex: (?i)[\w.-]{0,50}?(?:sentry)(?:[ \t\w.-]{0,20})[\s'"]{0,3}(?:=|>|:{1,3}=|\|\||:|=>|\?=|,)[\x60'"\s=]{0,5}([a-f0-9]{64})(?:[\x60'"\s;]|\\[nr]|$)
+  keywords:
+  - sentry
+  entropy: 3.0
+  tags: []
+  checksum_type: null
+  replacement_type: faker_api_key
+  description: Found a Sentry.io Access Token (old format), risking unauthorized access
+    to error tracking services and sensitive application data.
+  severity: medium
+- id: gl.sentry-org-token
+  name: Found a Sentry.io Organization Token, risking unauthorized access to error
+    tracking services and sensitive application data.
+  category: secret
+  subcategory: generic
+  source: gitleaks
+  confidence: high
+  regex: \bsntrys_eyJpYXQiO[a-zA-Z0-9+/]{10,200}(?:LCJyZWdpb25fdXJs|InJlZ2lvbl91cmwi|cmVnaW9uX3VybCI6)[a-zA-Z0-9+/]{10,200}={0,2}_[a-zA-Z0-9+/]{43}(?:[^a-zA-Z0-9+/]|\z)
+  keywords:
+  - sntrys_eyjpyxqio
+  entropy: 4.5
+  tags: []
+  checksum_type: null
+  replacement_type: faker_api_key
+  description: Found a Sentry.io Organization Token, risking unauthorized access to
+    error tracking services and sensitive application data.
+  severity: high
+- id: gl.sentry-user-token
+  name: Found a Sentry.io User Token, risking unauthorized access to error tracking
+    services and sensitive application data.
+  category: secret
+  subcategory: generic
+  source: gitleaks
+  confidence: medium
+  regex: \b(sntryu_[a-f0-9]{64})(?:[\x60'"\s;]|\\[nr]|$)
+  keywords:
+  - sntryu_
+  entropy: 3.5
+  tags: []
+  checksum_type: null
+  replacement_type: faker_api_key
+  description: Found a Sentry.io User Token, risking unauthorized access to error
+    tracking services and sensitive application data.
+  severity: medium
+- id: gl.sidekiq-sensitive-url
+  name: Uncovered a Sidekiq Sensitive URL, potentially exposing internal job queues
+    and sensitive operation details.
+  category: secret
+  subcategory: db-conn
+  source: gitleaks
+  confidence: medium
+  regex: (?i)\bhttps?://([a-f0-9]{8}:[a-f0-9]{8})@(?:gems.contribsys.com|enterprise.contribsys.com)(?:[\/|\#|\?|:]|$)
+  keywords:
+  - gems.contribsys.com
+  - enterprise.contribsys.com
+  entropy: null
+  tags: []
+  checksum_type: null
+  replacement_type: faker_db_conn
+  description: Uncovered a Sidekiq Sensitive URL, potentially exposing internal job
+    queues and sensitive operation details.
+  severity: medium
+- id: gl.slack-app-token
+  name: Detected a Slack App-level token, risking unauthorized access to Slack applications
+    and workspace data.
+  category: secret
+  subcategory: slack
+  source: gitleaks
+  confidence: high
+  regex: (?i)xapp-\d-[A-Z0-9]+-\d+-[a-z0-9]+
+  keywords:
+  - xapp
+  entropy: 2.0
+  tags: []
+  checksum_type: null
+  replacement_type: faker_api_key
+  description: Detected a Slack App-level token, risking unauthorized access to Slack
+    applications and workspace data.
+  severity: high
+- id: gl.slack-config-access-token
+  name: Found a Slack Configuration access token, posing a risk to workspace configuration
+    and sensitive data access.
+  category: secret
+  subcategory: slack
+  source: gitleaks
+  confidence: high
+  regex: (?i)xoxe.xox[bp]-\d-[A-Z0-9]{163,166}
+  keywords:
+  - xoxe.xoxb-
+  - xoxe.xoxp-
+  entropy: 2.0
+  tags: []
+  checksum_type: null
+  replacement_type: faker_api_key
+  description: Found a Slack Configuration access token, posing a risk to workspace
+    configuration and sensitive data access.
+  severity: high
+- id: gl.slack-config-refresh-token
+  name: Discovered a Slack Configuration refresh token, potentially allowing prolonged
+    unauthorized access to configuration settings.
+  category: secret
+  subcategory: slack
+  source: gitleaks
+  confidence: medium
+  regex: (?i)xoxe-\d-[A-Z0-9]{146}
+  keywords:
+  - xoxe-
+  entropy: 2.0
+  tags: []
+  checksum_type: null
+  replacement_type: faker_api_key
+  description: Discovered a Slack Configuration refresh token, potentially allowing
+    prolonged unauthorized access to configuration settings.
+  severity: medium
+- id: gl.slack-legacy-bot-token
+  name: Uncovered a Slack Legacy bot token, which could lead to compromised legacy
+    bot operations and data exposure.
+  category: secret
+  subcategory: slack
+  source: gitleaks
+  confidence: high
+  regex: xoxb-[0-9]{8,14}-[a-zA-Z0-9]{18,26}
+  keywords:
+  - xoxb
+  entropy: 2.0
+  tags: []
+  checksum_type: null
+  replacement_type: faker_api_key
+  description: Uncovered a Slack Legacy bot token, which could lead to compromised
+    legacy bot operations and data exposure.
+  severity: high
+- id: gl.slack-legacy-token
+  name: Detected a Slack Legacy token, risking unauthorized access to older Slack
+    integrations and user data.
+  category: secret
+  subcategory: slack
+  source: gitleaks
+  confidence: medium
+  regex: xox[os]-\d+-\d+-\d+-[a-fA-F\d]+
+  keywords:
+  - xoxo
+  - xoxs
+  entropy: 2.0
+  tags: []
+  checksum_type: null
+  replacement_type: faker_api_key
+  description: Detected a Slack Legacy token, risking unauthorized access to older
+    Slack integrations and user data.
+  severity: medium
+- id: gl.slack-legacy-workspace-token
+  name: Identified a Slack Legacy Workspace token, potentially compromising access
+    to workspace data and legacy features.
+  category: secret
+  subcategory: slack
+  source: gitleaks
+  confidence: medium
+  regex: xox[ar]-(?:\d-)?[0-9a-zA-Z]{8,48}
+  keywords:
+  - xoxa
+  - xoxr
+  entropy: 2.0
+  tags: []
+  checksum_type: null
+  replacement_type: faker_api_key
+  description: Identified a Slack Legacy Workspace token, potentially compromising
+    access to workspace data and legacy features.
+  severity: medium
+- id: gl.slack-user-token
+  name: Found a Slack User token, posing a risk of unauthorized user impersonation
+    and data access within Slack workspaces.
+  category: secret
+  subcategory: slack
+  source: gitleaks
+  confidence: medium
+  regex: xox[pe](?:-[0-9]{10,13}){3}-[a-zA-Z0-9-]{28,34}
+  keywords:
+  - xoxp-
+  - xoxe-
+  entropy: 2.0
+  tags: []
+  checksum_type: null
+  replacement_type: faker_api_key
+  description: Found a Slack User token, posing a risk of unauthorized user impersonation
+    and data access within Slack workspaces.
+  severity: medium
+- id: gl.slack-webhook-url
+  name: Discovered a Slack Webhook, which could lead to unauthorized message posting
+    and data leakage in Slack channels.
+  category: secret
+  subcategory: slack
+  source: gitleaks
+  confidence: medium
+  regex: (?:https?://)?hooks.slack.com/(?:services|workflows|triggers)/[A-Za-z0-9+/]{43,56}
+  keywords:
+  - hooks.slack.com
+  entropy: null
+  tags: []
+  checksum_type: null
+  replacement_type: faker_api_key
+  description: Discovered a Slack Webhook, which could lead to unauthorized message
+    posting and data leakage in Slack channels.
+  severity: medium
+- id: gl.stripe-access-token
+  name: Found a Stripe Access Token, posing a risk to payment processing services
+    and sensitive financial data.
+  category: secret
+  subcategory: stripe
+  source: gitleaks
+  confidence: medium
+  regex: \b((?:sk|rk)_(?:test|live|prod)_[a-zA-Z0-9]{10,99})(?:[\x60'"\s;]|\\[nr]|$)
+  keywords:
+  - sk_test
+  - sk_live
+  - sk_prod
+  - rk_test
+  - rk_live
+  - rk_prod
+  entropy: 2.0
+  tags: []
+  checksum_type: null
+  replacement_type: faker_api_key
+  description: Found a Stripe Access Token, posing a risk to payment processing services
+    and sensitive financial data.
+  severity: medium
+- id: gl.sumologic-access-id
+  name: Discovered a SumoLogic Access ID, potentially compromising log management
+    services and data analytics integrity.
+  category: secret
+  subcategory: generic
+  source: gitleaks
+  confidence: medium
+  regex: '[\w.-]{0,50}?(?i:[\w.-]{0,50}?(?:(?-i:[Ss]umo|SUMO))(?:[ \t\w.-]{0,20})[\s''"]{0,3})(?:=|>|:{1,3}=|\|\||:|=>|\?=|,)[\x60''"\s=]{0,5}(su[a-zA-Z0-9]{12})(?:[\x60''"\s;]|\\[nr]|$)'
+  keywords:
+  - sumo
+  entropy: 3.0
+  tags: []
+  checksum_type: null
+  replacement_type: faker_api_key
+  description: Discovered a SumoLogic Access ID, potentially compromising log management
+    services and data analytics integrity.
+  severity: medium
+- id: gl.sumologic-access-token
+  name: Uncovered a SumoLogic Access Token, which could lead to unauthorized access
+    to log data and analytics insights.
+  category: secret
+  subcategory: generic
+  source: gitleaks
+  confidence: medium
+  regex: (?i)[\w.-]{0,50}?(?:(?-i:[Ss]umo|SUMO))(?:[ \t\w.-]{0,20})[\s'"]{0,3}(?:=|>|:{1,3}=|\|\||:|=>|\?=|,)[\x60'"\s=]{0,5}([a-z0-9]{64})(?:[\x60'"\s;]|\\[nr]|$)
+  keywords:
+  - sumo
+  entropy: 3.0
+  tags: []
+  checksum_type: null
+  replacement_type: faker_api_key
+  description: Uncovered a SumoLogic Access Token, which could lead to unauthorized
+    access to log data and analytics insights.
+  severity: medium
+- id: gl.telegram-bot-api-token
+  name: Detected a Telegram Bot API Token, risking unauthorized bot operations and
+    message interception on Telegram.
+  category: secret
+  subcategory: telegram
+  source: gitleaks
+  confidence: medium
+  regex: (?i)[\w.-]{0,50}?(?:telegr)(?:[ \t\w.-]{0,20})[\s'"]{0,3}(?:=|>|:{1,3}=|\|\||:|=>|\?=|,)[\x60'"\s=]{0,5}([0-9]{5,16}:(?-i:A)[a-z0-9_\-]{34})(?:[\x60'"\s;]|\\[nr]|$)
+  keywords:
+  - telegr
+  entropy: null
+  tags: []
+  checksum_type: null
+  replacement_type: faker_api_key
+  description: Detected a Telegram Bot API Token, risking unauthorized bot operations
+    and message interception on Telegram.
+  severity: medium
+- id: gl.twilio-api-key
+  name: Found a Twilio API Key, posing a risk to communication services and sensitive
+    customer interaction data.
+  category: secret
+  subcategory: generic
+  source: gitleaks
+  confidence: medium
+  regex: SK[0-9a-fA-F]{32}
+  keywords:
+  - sk
+  entropy: 3.0
+  tags: []
+  checksum_type: null
+  replacement_type: faker_api_key
+  description: Found a Twilio API Key, posing a risk to communication services and
+    sensitive customer interaction data.
+  severity: medium
+- id: ha.pii.de-taxid
+  name: German Tax ID (Steueridentifikationsnummer)
+  category: pii
+  subcategory: de-taxid
+  source: hand-authored
+  confidence: low
+  regex: \b[1-9][0-9]{10}\b
+  keywords:
+  - steueridentifikationsnummer
+  - steuer-id
+  entropy: null
+  tags:
+  - hand-authored
+  checksum_type: null
+  replacement_type: generic_random
+  description: German Steueridentifikationsnummer (11 digits, format-match only)
+  severity: medium
+- id: ha.pii.fr-insee
+  name: French INSEE Number
+  category: pii
+  subcategory: fr-insee
+  source: hand-authored
+  confidence: low
+  regex: \b[12][0-9]{2}(0[1-9]|[1-9][0-9])(2[AB]|[0-9]{2})[0-9]{3}[0-9]{3}[0-9]{2}\b
+  keywords:
+  - insee
+  - secu
+  entropy: null
+  tags:
+  - hand-authored
+  checksum_type: null
+  replacement_type: generic_random
+  description: French INSEE/NIR social security number (15 digits, format-match only)
+  severity: medium
+- id: ha.pii.pl-pesel
+  name: Polish PESEL Number
+  category: pii
+  subcategory: pl-pesel
+  source: hand-authored
+  confidence: low
+  regex: \b[0-9]{2}[0-9]{2}[0-9]{2}[0-9]{5}\b
+  keywords:
+  - pesel
+  entropy: null
+  tags:
+  - hand-authored
+  checksum_type: null
+  replacement_type: generic_random
+  description: Polish PESEL national ID (11 digits, format-match only)
+  severity: medium
+- id: ha.pii.uk-nin
+  name: UK National Insurance Number
+  category: pii
+  subcategory: uk-nin
+  source: hand-authored
+  confidence: low
+  regex: \b[A-CEGHJ-PR-TW-Z]{1}[A-CEGHJ-NPR-TW-Z]{1}[0-9]{6}[A-D]{1}\b
+  keywords: []
+  entropy: null
+  tags:
+  - hand-authored
+  checksum_type: null
+  replacement_type: generic_random
+  description: UK National Insurance Number (format-match only, no check-digit)
+  severity: medium
+- id: ha.secret.ibm-cloud-iam
+  name: IBM Cloud IAM Token
+  category: secret
+  subcategory: generic
+  source: hand-authored
+  confidence: low
+  regex: \b[A-Za-z0-9_-]{44}\b
+  keywords:
+  - ibm
+  - iam_apikey
+  - ibmcloud
+  entropy: null
+  tags:
+  - hand-authored
+  checksum_type: null
+  replacement_type: faker_api_key
+  description: IBM Cloud IAM token (44-char alphanumeric, confidence low until format
+    verified)
+  severity: medium
+- id: np.anthropic.1
+  name: Anthropic API Key
+  category: secret
+  subcategory: anthropic
+  source: nosey-parker
+  confidence: high
+  regex: '(?x)
+
+    \b
+
+    (sk-ant-api[0-9]{2}-[a-zA-Z0-9_-]{95})
+
+    (?: [^a-zA-Z0-9_-] | $ )
+
+
+    '
+  keywords: []
+  entropy: null
+  tags: []
+  checksum_type: null
+  replacement_type: faker_api_key
+  description: ''
+  severity: high
+- id: np.aws.1
+  name: AWS API Key
+  category: secret
+  subcategory: aws
+  source: nosey-parker
+  confidence: high
+  regex: \b((?:A3T[A-Z0-9]|AKIA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA|ASIA)[A-Z0-9]{16})\b
+  keywords: []
+  entropy: null
+  tags:
+  - api
+  - identifier
+  checksum_type: null
+  replacement_type: faker_aws_key
+  description: ''
+  severity: high
+- id: np.aws.2
+  name: AWS Secret Access Key
+  category: secret
+  subcategory: aws
+  source: nosey-parker
+  confidence: medium
+  regex: '(?x)(?i)
+
+    \b
+
+    aws_? (?:secret)? _? (?:access)? _? (?:key)?
+
+    ["'''']?
+
+    \s{0,30}
+
+    (?::|=>|=)
+
+    \s{0,30}
+
+    ["'''']?
+
+    ([a-z0-9/+=]{40})
+
+    (?: [^a-z0-9/+=] | $ )
+
+
+    '
+  keywords: []
+  entropy: null
+  tags:
+  - api
+  - fuzzy
+  - secret
+  checksum_type: null
+  replacement_type: faker_aws_key
+  description: ''
+  severity: medium
+- id: np.aws.3
+  name: AWS Account ID
+  category: secret
+  subcategory: aws
+  source: nosey-parker
+  confidence: medium
+  regex: (?i)aws_?(?:account)_?(?:id)?["''`]?\s{0,30}(?::|=>|=)\s{0,30}["''`]?([0-9]{4}-?[0-9]{4}-?[0-9]{4})
+  keywords: []
+  entropy: null
+  tags:
+  - api
+  - fuzzy
+  - identifier
+  checksum_type: null
+  replacement_type: faker_aws_key
+  description: ''
+  severity: medium
+- id: np.aws.4
+  name: AWS Session Token
+  category: secret
+  subcategory: aws
+  source: nosey-parker
+  confidence: medium
+  regex: (?i)(?:aws.?session|aws.?session.?token|aws.?token)["''`]?\s{0,30}(?::|=>|=)\s{0,30}["''`]?([a-z0-9/+=]{16,200})[^a-z0-9/+=]
+  keywords: []
+  entropy: null
+  tags:
+  - api
+  - fuzzy
+  - secret
+  checksum_type: null
+  replacement_type: faker_aws_key
+  description: ''
+  severity: medium
+- id: np.aws.5
+  name: Amazon MWS Auth Token
+  category: secret
+  subcategory: aws
+  source: nosey-parker
+  confidence: high
+  regex: (?i)(amzn\.mws\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})
+  keywords: []
+  entropy: null
+  tags:
+  - api
+  checksum_type: null
+  replacement_type: faker_aws_key
+  description: ''
+  severity: high
+- id: np.aws.6
+  name: AWS API Credentials
+  category: secret
+  subcategory: aws
+  source: nosey-parker
+  confidence: medium
+  regex: '(?x)
+
+    \b
+
+    ((?:A3T[A-Z0-9]|AKIA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA|ASIA)[A-Z0-9]{16})     (?#
+    API key )
+
+    \b
+
+    (?: (?s) .{0,40} )                                                        (?#
+    Arbitrary intermediate stuff; ?s causes . to match newlines )
+
+    \b
+
+    ([A-Za-z0-9/+=]{40})                                                      (?#
+    secret )
+
+    (?: [^A-Za-z0-9/+=] | $ )
+
+
+    '
+  keywords: []
+  entropy: null
+  tags:
+  - api
+  - fuzzy
+  - secret
+  checksum_type: null
+  replacement_type: faker_aws_key
+  description: ''
+  severity: medium
+- id: np.azure.1
+  name: Azure Connection String
+  category: secret
+  subcategory: generic
+  source: nosey-parker
+  confidence: medium
+  regex: '(?x)
+
+    (?i)
+
+    (?: AccountName | SharedAccessKeyName | SharedSecretIssuer) \s*=\s* ([^${;<\[.\s*"''\#]
+    [^.;\n"''\#]{2,80}) \s*;\s*
+
+    .{0,10}\s*  (?# possible extra stuff, e.g., string concatenation)
+
+    (?: AccountKey | SharedAccessKey | SharedSecretValue) \s*=\s* ([a-zA-Z0-9/+]{20,100}[=]{0,3})
+
+    (?: [^a-zA-Z0-9/+=] | $ )
+
+
+    '
+  keywords: []
+  entropy: null
+  tags:
+  - api
+  - fuzzy
+  - secret
+  checksum_type: null
+  replacement_type: faker_api_key
+  description: ''
+  severity: medium
+- id: np.azure.2
+  name: Azure App Configuration Connection String
+  category: secret
+  subcategory: generic
+  source: nosey-parker
+  confidence: medium
+  regex: '(?x)
+
+    (https://[a-zA-Z0-9-]+\.azconfig\.io);
+
+    Id=(.{4}-.{2}-.{2}:[a-zA-Z0-9+/]{18,22});
+
+    Secret=([a-zA-Z0-9+/]{36,50}=)
+
+
+    '
+  keywords: []
+  entropy: null
+  tags:
+  - api
+  - fuzzy
+  - secret
+  checksum_type: null
+  replacement_type: faker_api_key
+  description: ''
+  severity: medium
+- id: np.azure.3
+  name: Azure DevOps Personal Access Token
+  category: secret
+  subcategory: generic
+  source: nosey-parker
+  confidence: medium
+  regex: '(?x)
+
+    (?i: ADO_PAT | pat_token | personal_?access_?token | \$token )
+
+    \s* = \s*
+
+    ["'']
+
+    ([a-z0-9]{52})
+
+    ["'']
+
+
+    '
+  keywords: []
+  entropy: null
+  tags:
+  - api
+  - fuzzy
+  - secret
+  checksum_type: null
+  replacement_type: faker_api_key
+  description: ''
+  severity: medium
+- id: np.azure.4
+  name: Azure DevOps Personal Access Token
+  category: secret
+  subcategory: generic
+  source: nosey-parker
+  confidence: high
+  regex: \b([a-zA-Z0-9]{76}AZDO[a-zA-Z0-9]{4})\b
+  keywords: []
+  entropy: null
+  tags:
+  - api
+  - secret
+  checksum_type: null
+  replacement_type: faker_api_key
+  description: ''
+  severity: high
+- id: np.doppler.1
+  name: Doppler CLI Token
+  category: secret
+  subcategory: generic
+  source: nosey-parker
+  confidence: high
+  regex: '(?x)
+
+    \b
+
+    (dp\.ct\.[a-zA-Z0-9]{40,44})
+
+    \b
+
+
+    '
+  keywords: []
+  entropy: null
+  tags: []
+  checksum_type: null
+  replacement_type: faker_api_key
+  description: ''
+  severity: high
+- id: np.github.1
+  name: GitHub Personal Access Token
+  category: secret
+  subcategory: github
+  source: nosey-parker
+  confidence: high
+  regex: \b(ghp_[a-zA-Z0-9]{36})\b
+  keywords: []
+  entropy: null
+  tags: []
+  checksum_type: null
+  replacement_type: faker_github_pat
+  description: ''
+  severity: high
+- id: np.github.2
+  name: GitHub OAuth Access Token
+  category: secret
+  subcategory: github
+  source: nosey-parker
+  confidence: high
+  regex: \b(gho_[a-zA-Z0-9]{36})\b
+  keywords: []
+  entropy: null
+  tags: []
+  checksum_type: null
+  replacement_type: faker_github_pat
+  description: ''
+  severity: high
+- id: np.github.3
+  name: GitHub App Token
+  category: secret
+  subcategory: github
+  source: nosey-parker
+  confidence: high
+  regex: \b((?:ghu|ghs)_[a-zA-Z0-9]{36})\b
+  keywords: []
+  entropy: null
+  tags: []
+  checksum_type: null
+  replacement_type: faker_github_pat
+  description: ''
+  severity: high
+- id: np.github.4
+  name: GitHub Refresh Token
+  category: secret
+  subcategory: github
+  source: nosey-parker
+  confidence: high
+  regex: \b(ghr_[a-zA-Z0-9]{76})\b
+  keywords: []
+  entropy: null
+  tags: []
+  checksum_type: null
+  replacement_type: faker_github_pat
+  description: ''
+  severity: high
+- id: np.github.5
+  name: GitHub Client ID
+  category: secret
+  subcategory: github
+  source: nosey-parker
+  confidence: high
+  regex: '(?x)(?i)
+
+    (?:github)
+
+    .?
+
+    (?: api | app | application | client | consumer | customer )?
+
+    .?
+
+    (?: id | identifier | key )
+
+    .{0,2} \s{0,20} .{0,2} \s{0,20} .{0,2}  (?# string terminators, whitespace, binding
+    operators, etc )
+
+    \b ([a-z0-9]{20}) \b
+
+
+    '
+  keywords: []
+  entropy: null
+  tags: []
+  checksum_type: null
+  replacement_type: faker_github_pat
+  description: ''
+  severity: high
+- id: np.github.6
+  name: GitHub Secret Key
+  category: secret
+  subcategory: github
+  source: nosey-parker
+  confidence: high
+  regex: '(?x)(?i)
+
+    github
+
+    .?
+
+    (?: api | app | application | client | consumer | customer | secret | key )
+
+    .?
+
+    (?: key | oauth | sec | secret )?
+
+    .{0,2} \s{0,20} .{0,2} \s{0,20} .{0,2}  (?# string terminators, whitespace, binding
+    operators, etc )
+
+    \b ([a-z0-9]{40}) \b
+
+
+    '
+  keywords: []
+  entropy: null
+  tags: []
+  checksum_type: null
+  replacement_type: faker_github_pat
+  description: ''
+  severity: high
+- id: np.github.7
+  name: GitHub Personal Access Token (fine-grained permissions)
+  category: secret
+  subcategory: github
+  source: nosey-parker
+  confidence: high
+  regex: '(?x)
+
+    \b
+
+    (github_pat_[0-9a-zA-Z_]{82})
+
+    \b
+
+
+    '
+  keywords: []
+  entropy: null
+  tags: []
+  checksum_type: null
+  replacement_type: faker_github_pat
+  description: ''
+  severity: high
+- id: np.gitlab.1
+  name: GitLab Runner Registration Token
+  category: secret
+  subcategory: gitlab
+  source: nosey-parker
+  confidence: high
+  regex: \b(GR1348941[0-9a-zA-Z_-]{20})(?:\b|$)
+  keywords: []
+  entropy: null
+  tags: []
+  checksum_type: null
+  replacement_type: faker_api_key
+  description: ''
+  severity: high
+- id: np.gitlab.2
+  name: GitLab Personal Access Token
+  category: secret
+  subcategory: gitlab
+  source: nosey-parker
+  confidence: high
+  regex: \b(glpat-[0-9a-zA-Z_-]{20})(?:\b|$)
+  keywords: []
+  entropy: null
+  tags: []
+  checksum_type: null
+  replacement_type: faker_api_key
+  description: ''
+  severity: high
+- id: np.gitlab.3
+  name: GitLab Pipeline Trigger Token
+  category: secret
+  subcategory: gitlab
+  source: nosey-parker
+  confidence: high
+  regex: \b(glptt-[0-9a-f]{40})\b
+  keywords: []
+  entropy: null
+  tags: []
+  checksum_type: null
+  replacement_type: faker_api_key
+  description: ''
+  severity: high
+- id: np.http.1
+  name: HTTP Basic Authentication
+  category: infra
+  subcategory: url-cred
+  source: nosey-parker
+  confidence: high
+  regex: '(?x)(?i)
+
+    Authorization (?: :\s+ | \s*.{1, 5}\s*) Basic \s+
+
+    ( [A-Za-z0-9+/]{6,} ={0,2} )
+
+    (?: [^A-Za-z0-9+/=] | $ )
+
+
+    '
+  keywords: []
+  entropy: null
+  tags: []
+  checksum_type: null
+  replacement_type: faker_url_cred
+  description: ''
+  severity: high
+- id: np.http.2
+  name: HTTP Bearer Token
+  category: infra
+  subcategory: url-cred
+  source: nosey-parker
+  confidence: high
+  regex: '(?x)(?i)
+
+    Authorization (?: :\s+ | \s*.{1, 5}\s*) Bearer \s+
+
+    ([a-zA-z0-9._~+/-]{6,} =*)
+
+    (?: [^a-zA-z0-9._~+/=-] | $ )
+
+
+    '
+  keywords: []
+  entropy: null
+  tags: []
+  checksum_type: null
+  replacement_type: faker_url_cred
+  description: ''
+  severity: high
+- id: np.jwt.1
+  name: JSON Web Token (base64url-encoded)
+  category: secret
+  subcategory: jwt
+  source: nosey-parker
+  confidence: high
+  regex: "(?x)\n\\b\n(\n  ey[a-zA-Z0-9_-]{12,}  (?# header )\n  \\.\n  ey[a-zA-Z0-9_-]{12,}\
+    \  (?# payload )\n  \\.\n  [a-zA-Z0-9_-]{12,}    (?# signature )\n)\n(?:[^a-zA-Z0-9_-]|$)\
+    \   (?# this instead of a \\b anchor because that doesn't play nicely with `-`\
+    \ )\n\n"
+  keywords: []
+  entropy: null
+  tags: []
+  checksum_type: null
+  replacement_type: faker_jwt
+  description: ''
+  severity: high
+- id: np.jwt.2
+  name: JSON Web Token Secret
+  category: secret
+  subcategory: jwt
+  source: nosey-parker
+  confidence: high
+  regex: '(?x)(?m)(?i)
+
+    ^\s*
+
+    (?: jwt: \s+ secret: | jwtsecret: )
+
+    \s+
+
+    "( [^"]{6,200} )"
+
+
+    '
+  keywords: []
+  entropy: null
+  tags: []
+  checksum_type: null
+  replacement_type: faker_jwt
+  description: ''
+  severity: high
+- id: np.jwt.3
+  name: JSON Web Token Secret
+  category: secret
+  subcategory: jwt
+  source: nosey-parker
+  confidence: high
+  regex: '(?x)(?m)(?i)
+
+    ^\s*
+
+    (?: jwt: \s+ secret: | jwtsecret: )
+
+    \s+
+
+    ''( [^'']{6,200} )''
+
+
+    '
+  keywords: []
+  entropy: null
+  tags: []
+  checksum_type: null
+  replacement_type: faker_jwt
+  description: ''
+  severity: high
+- id: np.mailgun.1
+  name: Mailgun API Key
+  category: secret
+  subcategory: generic
+  source: nosey-parker
+  confidence: high
+  regex: (?i)(?:mailgun|mg).{0,20}key-([a-z0-9]{32})\b
+  keywords: []
+  entropy: null
+  tags: []
+  checksum_type: null
+  replacement_type: faker_api_key
+  description: ''
+  severity: high
+- id: np.odbc.1
+  name: Credentials in ODBC Connection String
+  category: secret
+  subcategory: db-conn
+  source: nosey-parker
+  confidence: high
+  regex: '(?x)(?i)
+
+    (?: User | User\ Id | UserId | Uid) \s*=\s* ([^\s;]{3,100}) \s* ;
+
+    [\ \t]* .{0,10} [\ \t]*  (?# possible extra stuff, e.g., string concatenation)
+
+    (?: Password | Pwd) \s*=\s* ([^\t\ ;]{3,100})
+
+    \s* (?: [;"''] | $)
+
+
+    '
+  keywords: []
+  entropy: null
+  tags: []
+  checksum_type: null
+  replacement_type: faker_db_conn
+  description: ''
+  severity: high
+- id: np.pem.2
+  name: Base64-PEM-Encoded Private Key
+  category: secret
+  subcategory: private-key
+  source: nosey-parker
+  confidence: high
+  regex: "(?x)\n(\n  (?: LS0tLS1CRUdJTiBSU0EgUFJJVkFURSBLRVktLS0t             (?#\
+    \ prefix of base64 encoding of `-----BEGIN RSA PRIVATE KEY-----` )\n    | LS0tLS1CRUdJTiBEU0EgUFJJVkFURSBLRVktLS0t\
+    \             (?# prefix of base64 encoding of `-----BEGIN DSA PRIVATE KEY-----`\
+    \ )\n    | LS0tLS1CRUdJTiBFQyBQUklWQVRFIEtFWS0tLS0t             (?# prefix of\
+    \ base64 encoding of `-----BEGIN EC PRIVATE KEY-----` )\n    )\n  [a-zA-Z0-9+/=]{50,}\n\
+    )\n(?: [^a-zA-Z0-9+/=] | $ )\n\n"
+  keywords: []
+  entropy: null
+  tags:
+  - secret
+  checksum_type: null
+  replacement_type: faker_api_key
+  description: ''
+  severity: high
+- id: np.postgres.1
+  name: Credentials in PostgreSQL Connection URI
+  category: secret
+  subcategory: db-conn
+  source: nosey-parker
+  confidence: high
+  regex: "(?x)\n(?: postgres | postgresql ) ://                         (?# URI scheme\
+    \ )\n  ([a-zA-Z0-9%;._~!$&'()*+,;=-]{3,})                    (?# username)\n:\
+    \ ([a-zA-Z0-9%;._~!$&'()*+,;=-]{3,})                    (?# password)\n@ ([a-zA-Z0-9_.-]{3,}\
+    \ (?: :\\d{1,5})?)                   (?# hostname and port)\n(?: [^a-zA-Z0-9_.-]\
+    \ | $ )\n\n"
+  keywords: []
+  entropy: null
+  tags: []
+  checksum_type: null
+  replacement_type: faker_db_conn
+  description: ''
+  severity: high
+- id: np.sendgrid.1
+  name: SendGrid API Key
+  category: secret
+  subcategory: generic
+  source: nosey-parker
+  confidence: high
+  regex: \b(SG\.[0-9A-Za-z_-]{22}\.[0-9A-Za-z_-]{43})\b
+  keywords: []
+  entropy: null
+  tags: []
+  checksum_type: null
+  replacement_type: faker_api_key
+  description: ''
+  severity: high
+- id: np.slack.2
+  name: Slack Bot Token
+  category: secret
+  subcategory: slack
+  source: nosey-parker
+  confidence: high
+  regex: \b(xoxb-[0-9]{10,12}-[0-9]{10,14}-[a-zA-Z0-9]{23,25})\b
+  keywords: []
+  entropy: null
+  tags:
+  - api
+  - secret
+  checksum_type: null
+  replacement_type: faker_api_key
+  description: ''
+  severity: high
+- id: np.slack.3
+  name: Slack Webhook
+  category: secret
+  subcategory: slack
+  source: nosey-parker
+  confidence: high
+  regex: (?i)(https://hooks.slack.com/services/T[a-z0-9_]{8}/B[a-z0-9_]{8,12}/[a-z0-9_]{24})
+  keywords: []
+  entropy: null
+  tags:
+  - api
+  - secret
+  checksum_type: null
+  replacement_type: faker_api_key
+  description: ''
+  severity: high
+- id: np.slack.4
+  name: Slack User Token
+  category: secret
+  subcategory: slack
+  source: nosey-parker
+  confidence: high
+  regex: \b(xoxp-[0-9]{12}-[0-9]{12}-[0-9]{12}-[a-f0-9]{32})\b
+  keywords: []
+  entropy: null
+  tags:
+  - api
+  - secret
+  checksum_type: null
+  replacement_type: faker_api_key
+  description: ''
+  severity: high
+- id: np.slack.5
+  name: Slack App Token
+  category: secret
+  subcategory: slack
+  source: nosey-parker
+  confidence: high
+  regex: \b(xapp-[0-9]{12}-[a-zA-Z0-9/+]{24})\b
+  keywords: []
+  entropy: null
+  tags:
+  - api
+  - secret
+  checksum_type: null
+  replacement_type: faker_api_key
+  description: ''
+  severity: high
+- id: np.slack.6
+  name: Slack Legacy Bot Token
+  category: secret
+  subcategory: slack
+  source: nosey-parker
+  confidence: high
+  regex: \b(xoxb-[0-9]{10,13}-[a-zA-Z0-9]{24})\b
+  keywords: []
+  entropy: null
+  tags:
+  - api
+  - secret
+  checksum_type: null
+  replacement_type: faker_api_key
+  description: ''
+  severity: high
+- id: np.twilio.1
+  name: Twilio API Key
+  category: secret
+  subcategory: generic
+  source: nosey-parker
+  confidence: high
+  regex: (?i)twilio.{0,20}\b(sk[a-f0-9]{32})\b
+  keywords: []
+  entropy: null
+  tags: []
+  checksum_type: null
+  replacement_type: faker_api_key
+  description: ''
+  severity: high
+- id: spdb.american-express-credit-card
+  name: american_express_credit-card
+  category: pii
+  subcategory: cc
+  source: secrets-patterns-db
+  confidence: high
+  regex: 3[47][0-9]{13}
+  keywords: []
+  entropy: null
+  tags: []
+  checksum_type: luhn
+  replacement_type: faker_cc_luhn
+  description: ''
+  severity: high
+- id: spdb.emails
+  name: emails
+  category: pii
+  subcategory: email
+  source: secrets-patterns-db
+  confidence: high
+  regex: ([a-z0-9!#$%&'*+\/=?^_`{|.}~-]+@(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)
+  keywords: []
+  entropy: null
+  tags: []
+  checksum_type: null
+  replacement_type: faker_email
+  description: ''
+  severity: high
+- id: spdb.iban-numbers
+  name: iban_numbers
+  category: pii
+  subcategory: iban
+  source: secrets-patterns-db
+  confidence: high
+  regex: '[A-Z]{2}\d{2}[A-Z0-9]{4}\d{7}([A-Z\d]?){0,16}'
+  keywords: []
+  entropy: null
+  tags: []
+  checksum_type: null
+  replacement_type: faker_iban
+  description: ''
+  severity: high
+- id: spdb.mastercard
+  name: MasterCard
+  category: pii
+  subcategory: cc
+  source: secrets-patterns-db
+  confidence: high
+  regex: \b(?:4[0-9]{12}(?:[0-9]{3})?|[25][1-7][0-9]{14}|6(?:011|5[0-9][0-9])[0-9]{12}|3[47][0-9]{13}|3(?:0[0-5]|[68][0-9])[0-9]{11}|(?:2131|1800|35\d{3})\d{11})\b
+  keywords: []
+  entropy: null
+  tags: []
+  checksum_type: luhn
+  replacement_type: faker_cc_luhn
+  description: ''
+  severity: high
+- id: spdb.phones-with-exts
+  name: phones_with_exts
+  category: pii
+  subcategory: phone
+  source: secrets-patterns-db
+  confidence: high
+  regex: ((?:(?:\+?1\s*(?:[.-]\s*)?)?(?:\(\s*(?:[2-9]1[02-9]|[2-9][02-8]1|[2-9][02-8][02-9])\s*\)|(?:[2-9]1[02-9]|[2-9][02-8]1|[2-9][02-8][02-9]))\s*(?:[.-]\s*)?)?(?:[2-9]1[02-9]|[2-9][02-9]1|[2-9][02-9]{2})\s*(?:[.-]\s*)?(?:[0-9]{4})(?:\s*(?:#|x\.?|ext\.?|extension)\s*(?:\d+)?))
+  keywords: []
+  entropy: null
+  tags: []
+  checksum_type: null
+  replacement_type: faker_phone
+  description: ''
+  severity: high
+- id: spdb.ssn-number-3
+  name: ssn_number - 3
+  category: pii
+  subcategory: ssn
+  source: secrets-patterns-db
+  confidence: high
+  regex: (?:\d{3}-\d{2}-\d{4})
+  keywords: []
+  entropy: null
+  tags: []
+  checksum_type: null
+  replacement_type: faker_ssn
+  description: ''
+  severity: high
+- id: spdb.visa-credit-card
+  name: visa_credit_card
+  category: pii
+  subcategory: cc
+  source: secrets-patterns-db
+  confidence: high
+  regex: 4[0-9]{15}
+  keywords: []
+  entropy: null
+  tags: []
+  checksum_type: luhn
+  replacement_type: faker_cc_luhn
+  description: ''
+  severity: high

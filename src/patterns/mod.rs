@@ -24,11 +24,31 @@ struct CombinedYaml {
     rules: Vec<NormalizedRule>,
 }
 
-/// all normalized rules embedded from combined.yaml at compile time
+/// Embedded full ruleset — used as default when no env override is set.
+const EMBEDDED_RULES_YAML: &str = include_str!("../../rules/combined.yaml");
+
+/// All normalized rules.
+///
+/// Source priority (first that resolves wins):
+///   1. `BLEEP_RULES_FILE` env var → reads YAML from that path at runtime
+///      (used for dev mode: e.g. `rules/combined-100.yaml` for fast startup)
+///   2. embedded `rules/combined.yaml` (the full 401-rule set, baked in at compile)
+///
+/// On override-load failure (file missing, malformed) we panic — better to
+/// fail loud than silently serve a different ruleset than the user expects.
 pub static NORMALIZED_RULES: LazyLock<Vec<NormalizedRule>> = LazyLock::new(|| {
-    let parsed: CombinedYaml =
-        serde_yml::from_str(include_str!("../../rules/combined.yaml"))
-            .expect("combined.yaml embedded at build time must be valid YAML");
+    let yaml: std::borrow::Cow<'static, str> = match std::env::var("BLEEP_RULES_FILE") {
+        Ok(path) if !path.is_empty() => {
+            let content = std::fs::read_to_string(&path).unwrap_or_else(|e| {
+                panic!("BLEEP_RULES_FILE={path} could not be read: {e}")
+            });
+            eprintln!("[patterns] using rules from {path} (BLEEP_RULES_FILE)");
+            std::borrow::Cow::Owned(content)
+        }
+        _ => std::borrow::Cow::Borrowed(EMBEDDED_RULES_YAML),
+    };
+    let parsed: CombinedYaml = serde_yml::from_str(&yaml)
+        .expect("rules YAML must be valid (BLEEP_RULES_FILE or embedded combined.yaml)");
     parsed.rules
 });
 
