@@ -51,11 +51,16 @@ enum ProxyEvent {
 
 struct StatsState {
     last_summary: Mutex<Summary>,
-    /// Cached last-rendered title + connection state. We only push tray
-    /// updates when these change — otherwise repeatedly calling set_menu()
-    /// while the user has the menu open causes macOS to close it.
+    /// Cached last-rendered tray title — only push set_title() when it
+    /// changes (avoids unnecessary writes; not strictly required for
+    /// open-menu stability, but keeps the chrome quieter).
     last_title: Mutex<String>,
-    last_connected: Mutex<bool>,
+    /// Live-updatable references to the dynamic items in the tray menu.
+    /// We mutate these in place every poll instead of rebuilding the
+    /// whole Menu — rebuilding swaps the underlying NSMenu, which closes
+    /// any open dropdown on macOS.
+    header_item: Mutex<Option<MenuItem<tauri::Wry>>>,
+    status_item: Mutex<Option<MenuItem<tauri::Wry>>>,
 }
 
 #[derive(Default)]
@@ -163,18 +168,24 @@ fn format_menu_summary(s: &Summary) -> String {
     )
 }
 
+fn status_label(connected: bool) -> &'static str {
+    if connected {
+        "● Connected to bleep-gateway"
+    } else {
+        "○ Waiting for bleep-gateway…"
+    }
+}
+
+/// Build the tray menu ONCE at startup. Returns the assembled Menu plus
+/// references to the two dynamic items (header line, status line) so the
+/// poller can mutate them in place without ever calling set_menu() again.
 fn build_tray_menu(
     app: &AppHandle,
     summary_text: &str,
     connected: bool,
-) -> tauri::Result<Menu<tauri::Wry>> {
+) -> tauri::Result<(Menu<tauri::Wry>, MenuItem<tauri::Wry>, MenuItem<tauri::Wry>)> {
     let header = MenuItem::with_id(app, "header", summary_text, false, None::<&str>)?;
-    let status_label = if connected {
-        "● Connected to bleep-gateway"
-    } else {
-        "○ Waiting for bleep-gateway…"
-    };
-    let status = MenuItem::with_id(app, "status", status_label, false, None::<&str>)?;
+    let status = MenuItem::with_id(app, "status", status_label(connected), false, None::<&str>)?;
     let sep = PredefinedMenuItem::separator(app)?;
     let show = MenuItem::with_id(app, "show_main", "Show Bleep…", true, None::<&str>)?;
     let dashboard = MenuItem::with_id(app, "show_dashboard", "Open Dashboard", true, None::<&str>)?;
@@ -182,12 +193,13 @@ fn build_tray_menu(
     let settings = MenuItem::with_id(app, "show_settings", "Settings", true, None::<&str>)?;
     let sep2 = PredefinedMenuItem::separator(app)?;
     let quit = MenuItem::with_id(app, "quit", "Quit Bleep", true, Some("Cmd+Q"))?;
-    Menu::with_items(
+    let menu = Menu::with_items(
         app,
         &[
             &header, &status, &sep, &show, &dashboard, &rules, &settings, &sep2, &quit,
         ],
-    )
+    )?;
+    Ok((menu, header, status))
 }
 
 fn handle_tray_event(app: &AppHandle, event: MenuEvent) {
@@ -295,7 +307,7 @@ async fn fetch_summary(port: u16) -> Option<Summary> {
     resp.json::<Summary>().await.ok()
 }
 
-fn spawn_poller(app: AppHandle, tray: TrayIcon, state: Arc<StatsState>) {
+fn spawn_poller(_app: AppHandle, tray: TrayIcon, state: Arc<StatsState>) {
     tauri::async_runtime::spawn(async move {
         let mut tick = interval(Duration::from_secs(POLL_INTERVAL_SECS));
         loop {
@@ -311,9 +323,7 @@ fn spawn_poller(app: AppHandle, tray: TrayIcon, state: Arc<StatsState>) {
                 *guard = s.clone();
             }
 
-            // only push tray updates when values actually changed.
-            // calling set_menu() while the user has the menu open causes
-            // macOS to close it, which feels like the click "loses focus"
+            // tray title — only set when actually different (cheap dedup)
             let new_title = format_tray_title(&s, connected);
             let title_changed = match state.last_title.lock() {
                 Ok(mut g) if *g != new_title => {
@@ -322,21 +332,21 @@ fn spawn_poller(app: AppHandle, tray: TrayIcon, state: Arc<StatsState>) {
                 }
                 _ => false,
             };
-            let connected_changed = match state.last_connected.lock() {
-                Ok(mut g) if *g != connected => {
-                    *g = connected;
-                    true
-                }
-                _ => false,
-            };
             if title_changed {
                 let _ = tray.set_title(Some(new_title));
             }
-            // rebuild the menu only when the values it shows have changed:
-            // either the connection state flipped, or the summary text differs
-            if title_changed || connected_changed {
-                if let Ok(menu) = build_tray_menu(&app, &format_menu_summary(&s), connected) {
-                    let _ = tray.set_menu(Some(menu));
+
+            // tray menu — mutate the two dynamic items IN PLACE rather than
+            // rebuilding the menu. Rebuilding swaps the underlying NSMenu and
+            // macOS dismisses any open dropdown attached to it.
+            if let Ok(g) = state.header_item.lock() {
+                if let Some(item) = g.as_ref() {
+                    let _ = item.set_text(format_menu_summary(&s));
+                }
+            }
+            if let Ok(g) = state.status_item.lock() {
+                if let Some(item) = g.as_ref() {
+                    let _ = item.set_text(status_label(connected));
                 }
             }
         }
@@ -543,7 +553,8 @@ fn run() {
     let state = Arc::new(StatsState {
         last_summary: Mutex::new(Summary::default()),
         last_title: Mutex::new(String::new()),
-        last_connected: Mutex::new(false),
+        header_item: Mutex::new(None),
+        status_item: Mutex::new(None),
     });
     let gateway = Arc::new(GatewayProcess::default());
 
@@ -576,11 +587,17 @@ fn run() {
                     let _ = app.set_activation_policy(initial);
                 }
 
-                let initial_menu = build_tray_menu(
+                let (initial_menu, header_item, status_item) = build_tray_menu(
                     app.handle(),
                     "Today: 0   ·   7d: 0   ·   30d: 0   ·   total: 0",
                     false,
                 )?;
+                if let Ok(mut g) = state.header_item.lock() {
+                    *g = Some(header_item);
+                }
+                if let Ok(mut g) = state.status_item.lock() {
+                    *g = Some(status_item);
+                }
                 let tray = TrayIconBuilder::with_id("main")
                     .title("Bleep •")
                     .menu(&initial_menu)
