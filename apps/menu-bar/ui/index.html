@@ -3,14 +3,56 @@
 <head>
   <meta charset="utf-8" />
   <title>Bleep Dashboard</title>
-  <style>
-    body { font: 14px -apple-system, sans-serif; padding: 24px; color: #222; }
-    h1 { font-size: 18px; margin: 0 0 16px; }
-    p  { color: #666; }
-  </style>
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <h1>Bleep Dashboard</h1>
-  <p>Dashboard window stub — populated in the next commit.</p>
+  <header>
+    <h1>Bleep <span class="dim">redaction dashboard</span></h1>
+    <div id="connection" class="status">connecting…</div>
+  </header>
+
+  <section class="cards">
+    <div class="card">
+      <div class="card-label">today</div>
+      <div class="card-value" id="m-today">0</div>
+    </div>
+    <div class="card">
+      <div class="card-label">last 7 days</div>
+      <div class="card-value" id="m-7d">0</div>
+    </div>
+    <div class="card">
+      <div class="card-label">last 30 days</div>
+      <div class="card-value" id="m-30d">0</div>
+    </div>
+    <div class="card card-total">
+      <div class="card-label">all time</div>
+      <div class="card-value" id="m-total">0</div>
+    </div>
+  </section>
+
+  <section class="grid">
+    <div class="panel">
+      <h2>By category</h2>
+      <div id="categories" class="bar-chart">
+        <div class="empty">no redactions yet</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Top rules</h2>
+      <div id="rules" class="bar-chart">
+        <div class="empty">no redactions yet</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel live">
+    <h2>Live tail <span class="dim" id="tail-counter"></span></h2>
+    <div id="tail" class="tail">
+      <div class="empty">waiting for the next redaction…</div>
+    </div>
+  </section>
+
+  <script src="app.js"></script>
 </body>
 </html>

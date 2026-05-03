@@ -1,0 +1,189 @@
+/* Bleep dashboard — dark, dense, no fluff */
+
+:root {
+  --bg: #0e0f12;
+  --bg-elev: #161820;
+  --bg-elev2: #1d2029;
+  --border: #262936;
+  --fg: #e6e8ee;
+  --fg-dim: #8a90a0;
+  --accent: #4f9cff;
+  --green: #43d77a;
+  --red: #ff5d6c;
+  --orange: #ff9d4a;
+  --purple: #a587ff;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  background: var(--bg);
+  color: var(--fg);
+  font: 13px -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  padding: 20px 24px;
+  gap: 16px;
+}
+
+.dim { color: var(--fg-dim); font-weight: 400; }
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+h1 {
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+h2 {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fg-dim);
+  margin-bottom: 12px;
+}
+
+.status {
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  color: var(--fg-dim);
+}
+.status.connected { color: var(--green); border-color: rgba(67,215,122,0.3); }
+.status.disconnected { color: var(--red); border-color: rgba(255,93,108,0.3); }
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+.card {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+
+.card-label {
+  font-size: 11px;
+  color: var(--fg-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 6px;
+}
+
+.card-value {
+  font-size: 28px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+.card-total .card-value { color: var(--accent); }
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.panel {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.bar-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.bar {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: linear-gradient(to right, var(--bar-fill, transparent) var(--bar-pct, 0%), transparent var(--bar-pct, 0%));
+  position: relative;
+  font-variant-numeric: tabular-nums;
+}
+.bar:hover { background-color: var(--bg-elev2); background-image: linear-gradient(to right, var(--bar-fill, transparent) var(--bar-pct, 0%), transparent var(--bar-pct, 0%)); }
+
+.bar-label { font-size: 12px; color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bar-count { font-size: 12px; color: var(--fg-dim); }
+
+.bar.cat-secret { --bar-fill: rgba(255,93,108,0.25); }
+.bar.cat-pii    { --bar-fill: rgba(165,135,255,0.25); }
+.bar.cat-infra  { --bar-fill: rgba(255,157,74,0.25); }
+.bar.cat-other  { --bar-fill: rgba(79,156,255,0.25); }
+
+.empty {
+  text-align: center;
+  padding: 32px 12px;
+  color: var(--fg-dim);
+  font-size: 12px;
+}
+
+.live { flex: 0 0 auto; max-height: 240px; }
+
+.tail {
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 4px;
+  overflow-y: auto;
+  min-height: 0;
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+  font-size: 11px;
+}
+
+.tail-row {
+  display: grid;
+  grid-template-columns: 80px 60px 1fr auto;
+  gap: 12px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--bg-elev2);
+  animation: flash 0.6s ease-out;
+}
+
+@keyframes flash {
+  from { background-color: rgba(79,156,255,0.18); }
+  to   { background-color: var(--bg-elev2); }
+}
+
+.tail-time { color: var(--fg-dim); }
+.tail-method { color: var(--accent); font-weight: 600; }
+.tail-uri { color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tail-redactions { color: var(--orange); }
+
+/* scrollbars */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--fg-dim); }
