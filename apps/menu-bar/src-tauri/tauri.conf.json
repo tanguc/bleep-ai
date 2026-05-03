@@ -12,12 +12,6 @@
     "withGlobalTauri": true,
     "security": {
       "csp": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' http://127.0.0.1:* ws://127.0.0.1:* ipc: https://ipc.localhost"
-    },
-    "trayIcon": {
-      "id": "main",
-      "iconPath": "icons/tray.png",
-      "iconAsTemplate": true,
-      "title": "Bleep"
     }
   },
   "bundle": {
