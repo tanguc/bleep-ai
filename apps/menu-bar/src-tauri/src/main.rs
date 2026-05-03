@@ -51,6 +51,11 @@ enum ProxyEvent {
 
 struct StatsState {
     last_summary: Mutex<Summary>,
+    /// Cached last-rendered title + connection state. We only push tray
+    /// updates when these change — otherwise repeatedly calling set_menu()
+    /// while the user has the menu open causes macOS to close it.
+    last_title: Mutex<String>,
+    last_connected: Mutex<bool>,
 }
 
 #[derive(Default)]
@@ -305,9 +310,34 @@ fn spawn_poller(app: AppHandle, tray: TrayIcon, state: Arc<StatsState>) {
             if let Ok(mut guard) = state.last_summary.lock() {
                 *guard = s.clone();
             }
-            let _ = tray.set_title(Some(format_tray_title(&s, connected)));
-            if let Ok(menu) = build_tray_menu(&app, &format_menu_summary(&s), connected) {
-                let _ = tray.set_menu(Some(menu));
+
+            // only push tray updates when values actually changed.
+            // calling set_menu() while the user has the menu open causes
+            // macOS to close it, which feels like the click "loses focus"
+            let new_title = format_tray_title(&s, connected);
+            let title_changed = match state.last_title.lock() {
+                Ok(mut g) if *g != new_title => {
+                    *g = new_title.clone();
+                    true
+                }
+                _ => false,
+            };
+            let connected_changed = match state.last_connected.lock() {
+                Ok(mut g) if *g != connected => {
+                    *g = connected;
+                    true
+                }
+                _ => false,
+            };
+            if title_changed {
+                let _ = tray.set_title(Some(new_title));
+            }
+            // rebuild the menu only when the values it shows have changed:
+            // either the connection state flipped, or the summary text differs
+            if title_changed || connected_changed {
+                if let Ok(menu) = build_tray_menu(&app, &format_menu_summary(&s), connected) {
+                    let _ = tray.set_menu(Some(menu));
+                }
             }
         }
     });
@@ -495,6 +525,8 @@ fn spawn_event_forwarder(app: AppHandle) {
 fn run() {
     let state = Arc::new(StatsState {
         last_summary: Mutex::new(Summary::default()),
+        last_title: Mutex::new(String::new()),
+        last_connected: Mutex::new(false),
     });
     let gateway = Arc::new(GatewayProcess::default());
 
