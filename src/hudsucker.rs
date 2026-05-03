@@ -291,6 +291,37 @@ impl WebSocketHandler for LogHandler {
     }
 }
 
+#[cfg(unix)]
+fn spawn_parent_watchdog() {
+    // env var is set by the menu-bar app when spawning us as a child.
+    // Outside that case (running standalone), we do nothing.
+    let Ok(parent_pid_str) = std::env::var("BLEEP_PARENT_PID") else {
+        return;
+    };
+    let Ok(expected_parent) = parent_pid_str.parse::<u32>() else {
+        return;
+    };
+    println!("[parent-watchdog] watching parent pid {expected_parent}");
+    tokio::spawn(async move {
+        let mut tick =
+            tokio::time::interval(std::time::Duration::from_millis(500));
+        loop {
+            tick.tick().await;
+            // SAFETY: getppid is always safe to call.
+            let current = unsafe { libc::getppid() } as u32;
+            if current != expected_parent {
+                eprintln!(
+                    "[parent-watchdog] parent gone (was {expected_parent}, now {current}) — exiting"
+                );
+                std::process::exit(0);
+            }
+        }
+    });
+}
+
+#[cfg(not(unix))]
+fn spawn_parent_watchdog() {}
+
 pub async fn run_hudsucker(port: u16, log_file: String, min_confidence: String) {
     // force pattern compilation at startup, not on first request
     let rule_count = crate::patterns::get_normalized_rules().len();
@@ -312,6 +343,11 @@ pub async fn run_hudsucker(port: u16, log_file: String, min_confidence: String) 
 
     // start the local HTTP stats server for the menu-bar dashboard
     crate::stats_server::start();
+
+    // when run as a child of the menu-bar app (BLEEP_PARENT_PID set), exit
+    // if the parent dies. macOS reparents orphans to launchd (PID 1), which
+    // we detect and treat as a shutdown signal.
+    spawn_parent_watchdog();
 
     println!("starting hudsucker proxy on :{port}");
 

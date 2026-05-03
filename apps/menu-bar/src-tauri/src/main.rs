@@ -2,15 +2,17 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tauri::{
-    AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder,
+    AppHandle, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder,
     menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem},
     tray::{TrayIcon, TrayIconBuilder},
 };
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::net::TcpStream;
+use tokio::process::{Child, Command};
 use tokio::time::interval;
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
@@ -49,6 +51,14 @@ enum ProxyEvent {
 
 struct StatsState {
     last_summary: Mutex<Summary>,
+}
+
+/// Holds the embedded gateway child process so we can kill it on app quit.
+/// `None` means we did not spawn it (gateway was already running, or binary
+/// not found and the user is expected to run it themselves).
+#[derive(Default)]
+struct GatewayProcess {
+    child: Mutex<Option<Child>>,
 }
 
 const POLL_INTERVAL_SECS: u64 = 2;
@@ -171,6 +181,148 @@ fn spawn_poller(app: AppHandle, tray: TrayIcon, state: Arc<StatsState>) {
     });
 }
 
+// ── embedded gateway lifecycle ────────────────────────────────────────────────
+
+/// Resolve the path to the bleep-gateway binary, in order of preference:
+///   1. `BLEEP_GATEWAY_BIN` env var (dev override)
+///   2. `<app resource dir>/bleep-gateway` (bundled .app)
+///   3. `<menu-bar exe dir>/bleep-gateway` (sibling binary)
+///   4. `<repo root>/target/release/bleep-gateway` (cargo run from apps/menu-bar)
+/// Returns `None` if no candidate exists.
+fn resolve_gateway_binary(app: &AppHandle) -> Option<PathBuf> {
+    if let Ok(p) = std::env::var("BLEEP_GATEWAY_BIN") {
+        let path = PathBuf::from(p);
+        if path.is_file() {
+            return Some(path);
+        }
+    }
+    if let Ok(resource_dir) = app.path().resource_dir() {
+        let path = resource_dir.join("bleep-gateway");
+        if path.is_file() {
+            return Some(path);
+        }
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            let path = dir.join("bleep-gateway");
+            if path.is_file() {
+                return Some(path);
+            }
+        }
+    }
+    // dev fallback — we are at apps/menu-bar/src-tauri/target/debug/bleep-menu-bar
+    // (six parent levels up: bleep-menu-bar → debug → target → src-tauri →
+    //  menu-bar → apps → <repo root>). Look for the gateway in either
+    // target/release or target/debug.
+    if let Ok(exe) = std::env::current_exe() {
+        let mut p = exe.as_path();
+        for _ in 0..6 {
+            match p.parent() {
+                Some(parent) => p = parent,
+                None => return None,
+            }
+        }
+        let release = p.join("target/release/bleep-gateway");
+        if release.is_file() {
+            return Some(release);
+        }
+        let debug = p.join("target/debug/bleep-gateway");
+        if debug.is_file() {
+            return Some(debug);
+        }
+    }
+    None
+}
+
+/// Returns true if the gateway is already running (port file exists and the
+/// stats endpoint responds 200).
+async fn gateway_already_running() -> bool {
+    let Some(port) = read_proxy_stats_port() else {
+        return false;
+    };
+    let url = format!("http://127.0.0.1:{port}/health");
+    let client = match reqwest::Client::builder()
+        .timeout(Duration::from_millis(500))
+        .build()
+    {
+        Ok(c) => c,
+        Err(_) => return false,
+    };
+    matches!(client.get(&url).send().await, Ok(r) if r.status().is_success())
+}
+
+fn spawn_gateway(app: AppHandle, gateway: Arc<GatewayProcess>) {
+    tauri::async_runtime::spawn(async move {
+        if gateway_already_running().await {
+            println!("[menu-bar] gateway already running — not spawning a second copy");
+            return;
+        }
+        let Some(bin) = resolve_gateway_binary(&app) else {
+            eprintln!(
+                "[menu-bar] could not locate bleep-gateway binary. Set BLEEP_GATEWAY_BIN \
+                 or run the gateway manually."
+            );
+            return;
+        };
+        let our_pid = std::process::id();
+        println!(
+            "[menu-bar] spawning gateway: {} (BLEEP_PARENT_PID={})",
+            bin.display(),
+            our_pid
+        );
+        let child = Command::new(&bin)
+            .env("BLEEP_PARENT_PID", our_pid.to_string())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .kill_on_drop(true)
+            .spawn();
+        match child {
+            Ok(c) => {
+                if let Ok(mut guard) = gateway.child.lock() {
+                    *guard = Some(c);
+                }
+            }
+            Err(e) => eprintln!("[menu-bar] failed to spawn gateway: {e}"),
+        }
+    });
+}
+
+fn shutdown_gateway(gateway: &GatewayProcess) {
+    if let Ok(mut guard) = gateway.child.lock() {
+        if let Some(mut child) = guard.take() {
+            let _ = child.start_kill();
+        }
+    }
+}
+
+/// Catch SIGTERM and SIGINT so a `kill <pid>` or Ctrl+C from a terminal
+/// also tears down the embedded gateway. Tauri's RunEvent::Exit fires for
+/// menu-driven quits; this handler covers the raw-signal case.
+#[cfg(unix)]
+fn spawn_signal_handler(gateway: Arc<GatewayProcess>) {
+    tauri::async_runtime::spawn(async move {
+        use tokio::signal::unix::{SignalKind, signal};
+        let term = signal(SignalKind::terminate());
+        let int = signal(SignalKind::interrupt());
+        let (mut term, mut int) = match (term, int) {
+            (Ok(t), Ok(i)) => (t, i),
+            _ => return,
+        };
+        tokio::select! {
+            _ = term.recv() => {}
+            _ = int.recv() => {}
+        }
+        eprintln!("[menu-bar] caught signal, shutting down gateway");
+        shutdown_gateway(&gateway);
+        std::process::exit(0);
+    });
+}
+
+#[cfg(not(unix))]
+fn spawn_signal_handler(_gateway: Arc<GatewayProcess>) {}
+
+// ── live event forwarding ─────────────────────────────────────────────────────
+
 /// Connect to the gateway's event_bus TCP stream and forward each Request
 /// event (with at least one redaction) to the webview as a "redaction" event.
 /// Reconnects with backoff if the connection drops or never establishes.
@@ -228,11 +380,13 @@ fn run() {
     let state = Arc::new(StatsState {
         last_summary: Mutex::new(Summary::default()),
     });
+    let gateway = Arc::new(GatewayProcess::default());
 
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![get_stats_port])
         .setup({
             let state = state.clone();
+            let gateway = gateway.clone();
             move |app| {
                 #[cfg(target_os = "macos")]
                 {
@@ -253,13 +407,22 @@ fn run() {
                     .on_menu_event(handle_menu_event)
                     .build(app)?;
 
+                spawn_gateway(app.handle().clone(), gateway.clone());
+                spawn_signal_handler(gateway.clone());
                 spawn_poller(app.handle().clone(), tray, state);
                 spawn_event_forwarder(app.handle().clone());
                 Ok(())
             }
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application");
+
+    let gw_for_exit = gateway.clone();
+    app.run(move |_app, event| {
+        if let RunEvent::Exit = event {
+            shutdown_gateway(&gw_for_exit);
+        }
+    });
 }
 
 fn main() {
