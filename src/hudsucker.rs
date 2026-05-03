@@ -133,7 +133,9 @@ impl HttpHandler for LogHandler {
 
         // signed request bypass: AWS SigV4 body modification invalidates signature
         if is_signed_request(req.headers()) {
-            warn!("[bleep] skipping replacement: AWS SigV4 signed request (rule: signed-request-bypass)");
+            warn!(
+                "[bleep] skipping replacement: AWS SigV4 signed request (rule: signed-request-bypass)"
+            );
             return req.into();
         }
 
@@ -175,14 +177,17 @@ impl HttpHandler for LogHandler {
 
         if !redactions.is_empty() {
             // update Content-Length (only if header was present — never add for chunked)
-            content_router::update_content_length(
-                &mut parts.headers,
-                replaced_bytes.len(),
-                true,
-            );
+            content_router::update_content_length(&mut parts.headers, replaced_bytes.len(), true);
 
             // write JSONL audit entries (original values stay on disk only)
             self.write_audit(&request_id, content_type_str, &redactions);
+
+            // record metadata-only rows in the stats DB (originals never written here)
+            crate::stats::record_redactions(
+                crate::stats::Direction::Request,
+                &request_id,
+                &redactions,
+            );
 
             // emit to event bus (fake values only — originals never on bus)
             let redacted_entries = Self::to_redacted_entries(&redactions);
@@ -203,16 +208,11 @@ impl HttpHandler for LogHandler {
             });
         }
 
-        let req =
-            Request::from_parts(parts, Body::from(http_body_util::Full::new(replaced_bytes)));
+        let req = Request::from_parts(parts, Body::from(http_body_util::Full::new(replaced_bytes)));
         req.into()
     }
 
-    async fn handle_response(
-        &mut self,
-        _ctx: &HttpContext,
-        res: Response<Body>,
-    ) -> Response<Body> {
+    async fn handle_response(&mut self, _ctx: &HttpContext, res: Response<Body>) -> Response<Body> {
         let (mut parts, body) = res.into_parts();
         let bytes = body.collect().await.unwrap().to_bytes();
 
@@ -247,13 +247,15 @@ impl HttpHandler for LogHandler {
         }));
 
         if !redactions.is_empty() {
-            content_router::update_content_length(
-                &mut parts.headers,
-                replaced_bytes.len(),
-                true,
-            );
+            content_router::update_content_length(&mut parts.headers, replaced_bytes.len(), true);
 
             self.write_audit(&request_id, content_type_str, &redactions);
+
+            crate::stats::record_redactions(
+                crate::stats::Direction::Response,
+                &request_id,
+                &redactions,
+            );
 
             let redacted_entries = Self::to_redacted_entries(&redactions);
             event_bus::emit(ProxyEvent::Response {
@@ -299,6 +301,15 @@ pub async fn run_hudsucker(port: u16, log_file: String, min_confidence: String) 
     request_logger::init();
     event_bus::init();
     event_bus::start_tcp_server();
+
+    // initialize the redaction history DB (best-effort — failures are logged, proxy keeps running)
+    let stats_path = crate::stats::default_path();
+    if let Err(e) = crate::stats::init(&stats_path) {
+        eprintln!("[stats] init failed for {}: {e}", stats_path.display());
+    } else {
+        println!("[stats] redaction history DB at {}", stats_path.display());
+    }
+
     println!("starting hudsucker proxy on :{port}");
 
     let key_pair = KeyPair::from_pem(include_str!("key.pem")).expect("failed to parse private key");
@@ -321,6 +332,7 @@ pub async fn run_hudsucker(port: u16, log_file: String, min_confidence: String) 
         .build()
         .expect("failed to create proxy");
 
+    println!("Proxy running. Press Ctrl+C to stop.");
     if let Err(e) = proxy.start().await {
         error!("{}", e);
     }

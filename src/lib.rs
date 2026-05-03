@@ -4,6 +4,7 @@ pub mod detection;
 pub mod patterns;
 pub mod replacement;
 pub mod rule_pipeline;
+pub mod stats;
 pub mod types;
 
 // internal modules not exposed externally

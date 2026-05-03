@@ -7,6 +7,7 @@ mod patterns;
 mod proxy;
 mod replacement;
 mod request_logger;
+mod stats;
 mod types;
 
 use clap::Parser;
