@@ -4,7 +4,6 @@ version: "3"
 vars:
   BIN: bleep-gateway
   TUI: bleep-tui
-  MENUBAR: bleep-menu-bar
 
 tasks:
   default:
@@ -12,13 +11,6 @@ tasks:
     silent: true
     cmds:
       - task --list
-
-  install:
-    desc: symlink bleep CLI wrapper into /usr/local/bin (pass PREFIX=/your/path to override)
-    vars:
-      PREFIX: '{{.PREFIX | default "/usr/local"}}'
-    cmds:
-      - ./scripts/install.sh --prefix {{.PREFIX}}
 
   build:
     desc: build release binary
@@ -29,12 +21,6 @@ tasks:
       - target/release/{{.BIN}}
     cmds:
       - cargo build --release
-
-  bindings:
-    desc: regenerate TS bindings (crates/bleep-events/bindings/) from Rust types via ts-rs
-    cmds:
-      - cargo test --package bleep-events --quiet
-      - echo "wrote crates/bleep-events/bindings/*.ts"
 
   rules:
     desc: regenerate rules/combined.yaml from vendor sources
@@ -54,42 +40,16 @@ tasks:
       - cargo run --bin build-rules -- --limit 30
 
   run:
-    desc: run gateway (debug build) with the curated 100-rule set for fast startup. logs filtered by the binary's built-in EnvFilter (rustls/hyper/hudsucker muted). override with RUST_LOG=… task run
-    env:
-      BLEEP_LOG_REQUESTS: "1"
-      BLEEP_LOG_PATH: /tmp
-      BLEEP_SPAWN_GATEWAY: false
-      # dev startup: load the static curated 100-rule set instead of the
-      # embedded 401-rule full set. ~75% faster regex-compile pass.
-      BLEEP_RULES_FILE: rules/combined-100.yaml
-    cmds:
-      - pkill -f "target/.*/{{.BIN}}( |$)" || true
-      - cargo run --bin {{.BIN}} -- {{.CLI_ARGS}} 2>&1 | tee /tmp/bleep-gateway.log
-
-  run:trace:
-    desc: run gateway with FULL verbose TLS/proxy debug (rustls, hyper, hudsucker at DEBUG) — use when actually debugging handshakes
-    env:
-      RUST_LOG: "debug,bleep_gateway=trace,rustls=debug,hyper=debug,hyper_util=debug,hudsucker=debug,h2=info"
-      BLEEP_LOG_REQUESTS: "1"
-      BLEEP_LOG_PATH: /tmp
-      BLEEP_SPAWN_GATEWAY: false
-      BLEEP_RULES_FILE: rules/combined-100.yaml
-    cmds:
-      - pkill -f "target/.*/{{.BIN}}( |$)" || true
-      - cargo run --bin {{.BIN}} -- {{.CLI_ARGS}} 2>&1 | tee /tmp/bleep-gateway.log
-
-  run:full:
-    desc: run gateway (debug build) with the FULL 401-rule set (slower startup)
+    desc: run gateway (debug build)
     env:
       RUST_LOG: debug
       BLEEP_LOG_REQUESTS: "1"
       BLEEP_LOG_PATH: /tmp
-      BLEEP_SPAWN_GATEWAY: false
     cmds:
       - cargo run --bin {{.BIN}} -- {{.CLI_ARGS}}
 
   run:release:
-    desc: run gateway (release build) — uses the embedded full 401-rule set
+    desc: run gateway (release build)
     env:
       RUST_LOG: info
     cmds:
@@ -99,72 +59,6 @@ tasks:
     desc: run the TUI monitor
     cmds:
       - cargo run --bin {{.TUI}}
-
-  menu-bar:
-    desc: run the menu-bar app (debug) and auto-spawn the gateway as a child (gateway stdio goes to /tmp/bleep-gateway.{out,err}.log)
-    cmds:
-      - ./apps/menu-bar/run-dev.sh
-
-  menu-bar:logs:
-    desc: tail the spawned-gateway log (menu-bar redirects the gateway's stdio to these files so it survives menu-bar exit)
-    cmds:
-      - tail -F /tmp/bleep-gateway.out.log /tmp/bleep-gateway.err.log
-
-  stats:tail:
-    desc: tail timing/metrics lines from the running gateway — [stats_server] HTTP timings + [perf] markers. assumes `task run` (or run:trace) is logging into /tmp/bleep-gateway.log
-    cmds:
-      - tail -F /tmp/bleep-gateway.log | grep --line-buffered -E "\[stats_server\]|\[perf\]"
-
-  perf:
-    desc: snapshot the gateway's hot-path timing registry as a table (requires the gateway running with the stats server)
-    vars:
-      PORT:
-        sh: cat /tmp/bleep-stats.port 2>/dev/null || echo 9290
-    cmds:
-      - 'curl -s http://127.0.0.1:{{.PORT}}/perf | jq -r ''(["name","count","avg_ms","min_ms","max_ms","total_ms"] | @tsv), (.[] | [.name, .count, .avg_ms, .min_ms, .max_ms, .total_ms] | @tsv)'' | column -t -s $''\t'''
-
-  perf:reset:
-    desc: snapshot perf and then zero the counters — useful to bench a fresh slice of traffic
-    vars:
-      PORT:
-        sh: cat /tmp/bleep-stats.port 2>/dev/null || echo 9290
-    cmds:
-      - 'curl -s "http://127.0.0.1:{{.PORT}}/perf?reset=1" | jq -r ''(["name","count","avg_ms","min_ms","max_ms","total_ms"] | @tsv), (.[] | [.name, .count, .avg_ms, .min_ms, .max_ms, .total_ms] | @tsv)'' | column -t -s $''\t'''
-
-  menu-bar:observe:
-    desc: run the menu-bar app in observe-only mode (does not spawn the gateway — start it yourself with `task run` or `task run:release`)
-    dir: apps/menu-bar/src-tauri
-    cmds:
-      - cargo run
-
-  menu-bar:stop:
-    desc: kill the menu-bar app only (leaves the gateway running). use `task gateway:stop` or `task stop:all` to also take down the gateway.
-    cmds:
-      - pkill -f "target/.*/{{.MENUBAR}}( |$)" || true
-
-  gateway:stop:
-    desc: kill the gateway only (leaves the menu-bar running, though it will show as disconnected)
-    cmds:
-      - pkill -f "target/.*/{{.BIN}}( |$)" || true
-      - rm -f /tmp/bleep-stats.port /tmp/bleep-events.port
-
-  stop:all:
-    desc: kill both menu-bar and gateway, and clean port files (former `menu-bar:stop` behavior)
-    cmds:
-      - pkill -f "target/.*/{{.MENUBAR}}( |$)" || true
-      - pkill -f "target/.*/{{.BIN}}( |$)"     || true
-      - rm -f /tmp/bleep-stats.port /tmp/bleep-events.port
-
-  menu-bar:build:
-    desc: build the menu-bar app (debug)
-    dir: apps/menu-bar/src-tauri
-    cmds:
-      - cargo build
-
-  redact:
-    desc: 'send a prompt through the gateway and show BEFORE/AFTER redaction. Usage: task redact -- "my AKIA... and email@x.com"'
-    cmds:
-      - ./test-redaction.sh {{.CLI_ARGS}}
 
   test:
     desc: run all tests
@@ -191,14 +85,21 @@ tasks:
     cmds:
       - cargo clean
 
-  stage-release:
-    desc: "stage release artifacts (binary + wrapper + cert.pem) into dist/staging"
+  release:
+    desc: print the manual release procedure (CI does the heavy lifting)
     cmds:
-      - rm -rf dist/staging
-      - mkdir -p dist/staging/bin dist/staging/lib/bleep/src
-      - cargo build --release --bin bleep-gateway
-      - cp target/release/bleep-gateway dist/staging/bin/bleep-gateway
-      - cp claude-wrapper.sh dist/staging/lib/bleep/bleep-wrapper.sh
-      - chmod +x dist/staging/lib/bleep/bleep-wrapper.sh
-      - bash scripts/extract-cert.sh dist/staging/lib/bleep/src
-      - echo "release staged at dist/staging"
+      - |
+        cat <<'EOF'
+        Release procedure:
+          1. Update Cargo.toml `version` if you want it to match the tag.
+          2. Commit + push to main.
+          3. git tag vX.Y.Z && git push --tags
+          4. GitHub Actions builds + uploads draft release with 4 archives + checksums.txt.
+          5. Smoke-test: download install.sh from the draft release tree and run it on a clean macOS user.
+          6. Promote the draft to a published release via GitHub UI when satisfied.
+        EOF
+
+  test-installer:
+    desc: run installer end-to-end smoke test against a synthetic local release
+    cmds:
+      - bash scripts/test-installer.sh

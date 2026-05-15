@@ -283,7 +283,8 @@ main() {
     exit 0
   fi
 
-  local TARGET VERSION TMP APP_PATH LA_STATUS="skipped"
+  local TARGET VERSION TMP="" APP_PATH LA_STATUS="skipped"
+  trap 'rm -rf "${TMP:-}"' EXIT
 
   TARGET=$(detect_target)
   log "detected target: ${TARGET}"
@@ -299,10 +300,15 @@ main() {
   fi
 
   TMP=$(mktemp -d)
-  trap 'rm -rf "${TMP}"' EXIT
   mkdir -p "${TMP}/extract"
 
-  local BASE_URL="https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/${VERSION}"
+  local BASE_URL
+  if [ -n "${BLEEP_RELEASE_BASE:-}" ]; then
+    BASE_URL="$BLEEP_RELEASE_BASE"
+    log "using BLEEP_RELEASE_BASE override: $BASE_URL"
+  else
+    BASE_URL="https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/${VERSION}"
+  fi
 
   # download checksums first, then archives
   log "downloading checksums.txt"
