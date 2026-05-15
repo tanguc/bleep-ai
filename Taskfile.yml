@@ -84,3 +84,22 @@ tasks:
     desc: remove build artifacts
     cmds:
       - cargo clean
+
+  release:
+    desc: print the manual release procedure (CI does the heavy lifting)
+    cmds:
+      - |
+        cat <<'EOF'
+        Release procedure:
+          1. Update Cargo.toml `version` if you want it to match the tag.
+          2. Commit + push to main.
+          3. git tag vX.Y.Z && git push --tags
+          4. GitHub Actions builds + uploads draft release with 4 archives + checksums.txt.
+          5. Smoke-test: download install.sh from the draft release tree and run it on a clean macOS user.
+          6. Promote the draft to a published release via GitHub UI when satisfied.
+        EOF
+
+  test-installer:
+    desc: run installer end-to-end smoke test against a synthetic local release
+    cmds:
+      - bash scripts/test-installer.sh
