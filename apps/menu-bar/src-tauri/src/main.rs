@@ -376,12 +376,29 @@ fn resolve_gateway_binary(app: &AppHandle) -> Option<PathBuf> {
 }
 
 async fn gateway_already_running() -> bool {
-    let Some(port) = read_proxy_stats_port() else {
-        return false;
-    };
+    // 1) preferred path: stats port file written by the running gateway.
+    if let Some(port) = read_proxy_stats_port() {
+        if probe_health(port).await {
+            return true;
+        }
+    }
+    // 2) fallback: the port file may have been removed out from under a still-
+    //    running gateway (e.g. by an over-eager cleanup task). Probe the
+    //    well-known default range directly so we don't spawn a duplicate
+    //    that will fail to bind :9190 and look like a "crash". Range mirrors
+    //    stats_server::bind_first_available (9290..=9299).
+    for port in 9290u16..=9299 {
+        if probe_health(port).await {
+            return true;
+        }
+    }
+    false
+}
+
+async fn probe_health(port: u16) -> bool {
     let url = format!("http://127.0.0.1:{port}/health");
     let client = match reqwest::Client::builder()
-        .timeout(Duration::from_millis(500))
+        .timeout(Duration::from_millis(250))
         .build()
     {
         Ok(c) => c,
@@ -390,25 +407,8 @@ async fn gateway_already_running() -> bool {
     matches!(client.get(&url).send().await, Ok(r) if r.status().is_success())
 }
 
-/// Returns true when the user opted into auto-spawning the gateway via env var.
-/// Default is OFF — the menu-bar app is observation-only unless explicitly told
-/// otherwise.
-fn auto_spawn_enabled() -> bool {
-    matches!(
-        std::env::var("BLEEP_SPAWN_GATEWAY").ok().as_deref(),
-        Some("1") | Some("true") | Some("TRUE") | Some("True")
-    )
-}
-
 fn spawn_gateway(app: AppHandle, gateway: Arc<GatewayProcess>) {
     tauri::async_runtime::spawn(async move {
-        if !auto_spawn_enabled() {
-            println!(
-                "[menu-bar] BLEEP_SPAWN_GATEWAY not set — UI runs in observe-only mode \
-                 (start the gateway yourself, or set BLEEP_SPAWN_GATEWAY=1 to auto-spawn)"
-            );
-            return;
-        }
         if gateway_already_running().await {
             println!("[menu-bar] gateway already running — not spawning a second copy");
             return;
@@ -420,18 +420,70 @@ fn spawn_gateway(app: AppHandle, gateway: Arc<GatewayProcess>) {
             );
             return;
         };
-        let our_pid = std::process::id();
-        println!(
-            "[menu-bar] spawning gateway: {} (BLEEP_PARENT_PID={})",
-            bin.display(),
-            our_pid
-        );
-        let child = Command::new(&bin)
-            .env("BLEEP_PARENT_PID", our_pid.to_string())
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .kill_on_drop(true)
-            .spawn();
+        println!("[menu-bar] spawning gateway: {} (detached)", bin.display());
+        // Detach the gateway so it survives the menu-bar:
+        //   - own process group → terminal Ctrl+C / SIGINT to the menu-bar's
+        //     pgrp doesn't propagate.
+        //   - no kill_on_drop / no BLEEP_PARENT_PID watchdog → menu-bar exit
+        //     leaves the gateway running.
+        //   - stdio redirected to /tmp/bleep-gateway.{out,err}.log INSTEAD of
+        //     piping back to the menu-bar. With Stdio::piped() the menu-bar
+        //     holds the read end; on menu-bar exit that end closes and the
+        //     gateway's next stderr write (TLS chatter is constant) hits
+        //     SIGPIPE → process dies. Routing to a file decouples lifetimes
+        //     AND keeps logs greppable via `task menu-bar:logs` /
+        //     /tmp/bleep-gateway.err.log.
+        // Use `task menu-bar:stop` to take everything down explicitly.
+        let mut cmd = Command::new(&bin);
+        // stdin must also be null — by default Command inherits the parent's
+        // stdin which keeps the child tied to the menu-bar's controlling
+        // terminal (terminal close → SIGHUP propagates).
+        cmd.stdin(std::process::Stdio::null());
+        let log_dir = std::path::Path::new("/tmp");
+        let stdout_log = log_dir.join("bleep-gateway.out.log");
+        let stderr_log = log_dir.join("bleep-gateway.err.log");
+        match (
+            std::fs::OpenOptions::new().create(true).append(true).open(&stdout_log),
+            std::fs::OpenOptions::new().create(true).append(true).open(&stderr_log),
+        ) {
+            (Ok(o), Ok(e)) => {
+                cmd.stdout(std::process::Stdio::from(o))
+                    .stderr(std::process::Stdio::from(e));
+            }
+            _ => {
+                // fall back to /dev/null rather than pipe — pipes are the bug
+                // we're avoiding. Losing logs is better than killing the
+                // gateway.
+                eprintln!(
+                    "[menu-bar] could not open gateway log files at {}; \
+                     redirecting gateway stdio to /dev/null",
+                    log_dir.display()
+                );
+                cmd.stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null());
+            }
+        }
+        #[cfg(unix)]
+        {
+            // setsid() starts a brand-new session — fully detaches from the
+            // menu-bar's controlling terminal. Without this, SIGHUP propagates
+            // session-wide when the terminal (or the parent task) goes away
+            // and takes the gateway with it. process_group(0) alone only
+            // makes a new pgrp inside the same session — not enough.
+            //
+            // SAFETY: pre_exec runs between fork() and exec() in the child,
+            // before any Rust state is shared. setsid is async-signal-safe.
+            unsafe {
+                cmd.pre_exec(|| {
+                    // ignore EPERM (already a session leader after fork in
+                    // some configurations) — falling back to setpgid is fine.
+                    let _ = libc::setsid();
+                    Ok(())
+                });
+            }
+            cmd.process_group(0);
+        }
+        let child = cmd.spawn();
         match child {
             Ok(c) => {
                 if let Ok(mut guard) = gateway.child.lock() {
@@ -443,16 +495,11 @@ fn spawn_gateway(app: AppHandle, gateway: Arc<GatewayProcess>) {
     });
 }
 
-fn shutdown_gateway(gateway: &GatewayProcess) {
-    if let Ok(mut guard) = gateway.child.lock() {
-        if let Some(mut child) = guard.take() {
-            let _ = child.start_kill();
-        }
-    }
-}
-
 #[cfg(unix)]
-fn spawn_signal_handler(gateway: Arc<GatewayProcess>) {
+fn spawn_signal_handler(_gateway: Arc<GatewayProcess>) {
+    // We deliberately do NOT kill the gateway on signal: the gateway is
+    // detached (own process group) and outlives the menu-bar by design.
+    // Use `task menu-bar:stop` to take down both explicitly.
     tauri::async_runtime::spawn(async move {
         use tokio::signal::unix::{signal, SignalKind};
         let term = signal(SignalKind::terminate());
@@ -465,8 +512,7 @@ fn spawn_signal_handler(gateway: Arc<GatewayProcess>) {
             _ = term.recv() => {}
             _ = int.recv() => {}
         }
-        eprintln!("[menu-bar] caught signal, shutting down gateway");
-        shutdown_gateway(&gateway);
+        eprintln!("[menu-bar] caught signal, exiting (gateway left running)");
         std::process::exit(0);
     });
 }
@@ -477,20 +523,27 @@ fn spawn_signal_handler(_gateway: Arc<GatewayProcess>) {}
 // ── live event forwarding ─────────────────────────────────────────────────────
 
 fn spawn_event_forwarder(app: AppHandle) {
+    // Reconnect schedule for the same-host event bus. The original 1s→15s
+    // exponential backoff dropped 7s+ of events on every gateway restart
+    // (events emitted with no subscriber are silently discarded by
+    // broadcast::Sender::send). For a loopback TCP connection a fast retry
+    // is fine — the gateway only takes ~1s to come back up.
+    let initial_backoff = Duration::from_millis(100);
+    let max_backoff = Duration::from_secs(1);
     tauri::async_runtime::spawn(async move {
-        let mut backoff = Duration::from_secs(1);
+        let mut backoff = initial_backoff;
         loop {
             let port = match read_proxy_events_port() {
                 Some(p) => p,
                 None => {
                     tokio::time::sleep(backoff).await;
-                    backoff = (backoff * 2).min(Duration::from_secs(15));
+                    backoff = (backoff * 2).min(max_backoff);
                     continue;
                 }
             };
             match TcpStream::connect(("127.0.0.1", port)).await {
                 Ok(stream) => {
-                    backoff = Duration::from_secs(1);
+                    backoff = initial_backoff;
                     let mut reader = BufReader::new(stream);
                     let mut line = String::new();
                     loop {
@@ -519,7 +572,7 @@ fn spawn_event_forwarder(app: AppHandle) {
                 }
                 Err(_) => {
                     tokio::time::sleep(backoff).await;
-                    backoff = (backoff * 2).min(Duration::from_secs(15));
+                    backoff = (backoff * 2).min(max_backoff);
                 }
             }
         }
@@ -597,11 +650,9 @@ fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
 
-    let gw_for_exit = gateway.clone();
     app.run(move |app, event| match event {
-        RunEvent::Exit => {
-            shutdown_gateway(&gw_for_exit);
-        }
+        // gateway is intentionally not torn down here — it runs detached and
+        // is meant to outlive the menu-bar. Stop it via `task menu-bar:stop`.
         // macOS: clicking the dock icon when no windows are visible should reopen.
         RunEvent::Reopen {
             has_visible_windows,
