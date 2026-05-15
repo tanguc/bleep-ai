@@ -1,0 +1,131 @@
+name: release
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  publish-gateway:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-14
+            target: aarch64-apple-darwin
+          - platform: macos-13
+            target: x86_64-apple-darwin
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+      - name: Build gateway
+        run: cargo build --release --bin bleep-gateway --target ${{ matrix.target }}
+      - name: Stage release tree
+        run: |
+          set -euo pipefail
+          STAGE="$RUNNER_TEMP/stage"
+          mkdir -p "$STAGE/bin" "$STAGE/lib/bleep/src"
+          cp "target/${{ matrix.target }}/release/bleep-gateway" "$STAGE/bin/bleep-gateway"
+          cp claude-wrapper.sh "$STAGE/lib/bleep/bleep-wrapper.sh"
+          chmod +x "$STAGE/lib/bleep/bleep-wrapper.sh"
+          bash scripts/extract-cert.sh "$STAGE/lib/bleep/src"
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "$VERSION" > "$STAGE/.version"
+      - name: Package archive
+        run: |
+          set -euo pipefail
+          STAGE="$RUNNER_TEMP/stage"
+          ARCHIVE="bleep-gateway-${{ matrix.target }}.tar.gz"
+          tar -C "$STAGE" -czf "$ARCHIVE" bin lib .version
+          shasum -a 256 "$ARCHIVE" > "$ARCHIVE.sha256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gateway-${{ matrix.target }}
+          path: |
+            bleep-gateway-${{ matrix.target }}.tar.gz
+            bleep-gateway-${{ matrix.target }}.tar.gz.sha256
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          draft: true
+          files: |
+            bleep-gateway-${{ matrix.target }}.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-app:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-14
+            args: '--target aarch64-apple-darwin'
+            target: aarch64-apple-darwin
+          - platform: macos-13
+            args: '--target x86_64-apple-darwin'
+            target: x86_64-apple-darwin
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: apps/menu-bar/src-tauri
+          tagName: ${{ github.ref_name }}
+          releaseName: Bleep ${{ github.ref_name }}
+          releaseDraft: true
+          args: ${{ matrix.args }}
+      - name: Locate and rename .app.tar.gz
+        run: |
+          set -euo pipefail
+          SRC="apps/menu-bar/src-tauri/target/${{ matrix.target }}/release/bundle/macos"
+          ORIG=$(ls "$SRC"/*.app.tar.gz | head -n1)
+          cp "$ORIG" "Bleep.app-${{ matrix.target }}.tar.gz"
+          shasum -a 256 "Bleep.app-${{ matrix.target }}.tar.gz" > "Bleep.app-${{ matrix.target }}.tar.gz.sha256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-${{ matrix.target }}
+          path: |
+            Bleep.app-${{ matrix.target }}.tar.gz
+            Bleep.app-${{ matrix.target }}.tar.gz.sha256
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          draft: true
+          files: |
+            Bleep.app-${{ matrix.target }}.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  checksums:
+    needs: [publish-gateway, publish-app]
+    runs-on: macos-14
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: '*'
+          path: dist
+          merge-multiple: true
+      - name: Build checksums.txt
+        run: |
+          set -euo pipefail
+          cd dist
+          cat *.sha256 > checksums.txt
+          cat checksums.txt
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          draft: true
+          files: dist/checksums.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
