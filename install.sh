@@ -8,6 +8,7 @@ set -euo pipefail
 #
 # Flags:
 #   --uninstall          remove all installed files
+#   --local              build from source instead of downloading (requires Rust + cargo-tauri)
 #   --prefix=PATH        install root (default: ~/.local)
 #   --version=TAG        pin a release tag (default: latest)
 #   --repo=OWNER/NAME    override GitHub repo (default: USER/bleep)
@@ -31,6 +32,7 @@ REPO_OWNER="${REPO_OWNER_DEFAULT}"
 REPO_NAME="${REPO_NAME_DEFAULT}"
 LAUNCH_AGENT_CHOICE="ask"   # ask | yes | no
 DO_UNINSTALL=0
+DO_LOCAL=0
 
 # ============================================================
 # Helpers
@@ -46,6 +48,7 @@ Usage: bash install.sh [OPTIONS]
 
 Options:
   --uninstall          remove all installed Bleep files
+  --local              build from source (requires Rust + cargo-tauri toolchain)
   --prefix=PATH        install root (default: ~/.local)
   --version=TAG        pin a specific release tag
   --repo=OWNER/NAME    override the GitHub repo (default: USER/bleep)
@@ -67,6 +70,7 @@ EOF
 for arg in "$@"; do
   case "$arg" in
     --uninstall)         DO_UNINSTALL=1 ;;
+    --local)             DO_LOCAL=1 ;;
     --prefix=*)          PREFIX="${arg#--prefix=}" ;;
     --version=*)         VERSION_OVERRIDE="${arg#--version=}" ;;
     --repo=*)            raw="${arg#--repo=}"; REPO_OWNER="${raw%%/*}"; REPO_NAME="${raw#*/}" ;;
@@ -273,6 +277,57 @@ PATH_HINT
 }
 
 # ============================================================
+# Local build (--local mode)
+# ============================================================
+
+build_local_artifacts() {
+  [ -f "Cargo.toml" ]              || die "--local must be run from the repo root (Cargo.toml not found)"
+  [ -d "apps/menu-bar/src-tauri" ] || die "--local requires apps/menu-bar/src-tauri/ in the repo"
+  have cargo                       || die "--local requires cargo (install Rust via rustup)"
+
+  log "building bleep-gateway (release)..."
+  cargo build --release --bin bleep-gateway
+
+  log "building Bleep.app (release) for ${TARGET}..."
+  (cd apps/menu-bar/src-tauri && cargo tauri build --target "${TARGET}")
+}
+
+install_gateway_local() {
+  mkdir -p "${PREFIX}/bin" "${PREFIX}/${INSTALL_LIB_REL}/src"
+  if [ -e "${PREFIX}/bin/bleep" ] && [ ! -L "${PREFIX}/bin/bleep" ]; then
+    rm -f "${PREFIX}/bin/bleep"
+  fi
+  cp "target/release/bleep-gateway"  "${PREFIX}/bin/bleep-gateway"
+  cp "claude-wrapper.sh"             "${PREFIX}/${INSTALL_LIB_REL}/bleep-wrapper.sh"
+  bash "scripts/extract-cert.sh"     "${PREFIX}/${INSTALL_LIB_REL}/src"
+  echo "local"                      > "${PREFIX}/${INSTALL_LIB_REL}/.version"
+  chmod 0755 "${PREFIX}/bin/bleep-gateway" "${PREFIX}/${INSTALL_LIB_REL}/bleep-wrapper.sh"
+  chmod 0644 "${PREFIX}/${INSTALL_LIB_REL}/src/cert.pem"
+  ln -sf "${PREFIX}/${INSTALL_LIB_REL}/bleep-wrapper.sh" "${PREFIX}/bin/bleep"
+  log "installed bleep-gateway and wrapper"
+}
+
+install_app_bundle_local() {
+  local src_app="apps/menu-bar/src-tauri/target/${TARGET}/release/bundle/macos/Bleep.app"
+  [ -d "$src_app" ] || die "Bleep.app not found at $src_app"
+  local dest_root="/Applications"
+  if [ ! -w "$dest_root" ]; then
+    dest_root="${HOME}/Applications"
+    mkdir -p "$dest_root"
+    log "no write access to /Applications — installing to $dest_root"
+  fi
+  local app_dest="${dest_root}/Bleep.app"
+  rm -rf "$app_dest"
+  cp -R "$src_app" "$app_dest"
+  xattr -r -d com.apple.quarantine "$app_dest" 2>/dev/null || true
+  if have codesign; then
+    codesign --force --deep -s - "$app_dest" 2>/dev/null \
+      || log "warning: codesign failed — app may not launch on Apple Silicon"
+  fi
+  printf '%s' "$app_dest"
+}
+
+# ============================================================
 # Main
 # ============================================================
 
@@ -288,6 +343,31 @@ main() {
 
   TARGET=$(detect_target)
   log "detected target: ${TARGET}"
+
+  # ── local build path ──────────────────────────────────────
+  if [ "$DO_LOCAL" = "1" ]; then
+    VERSION="local"
+    build_local_artifacts
+    install_gateway_local
+    APP_PATH=$(install_app_bundle_local)
+    case "$LAUNCH_AGENT_CHOICE" in
+      yes) install_launch_agent; LA_STATUS="${HOME}/Library/LaunchAgents/${LAUNCH_AGENT_PLIST_NAME}" ;;
+      no)  log "skipping LaunchAgent" ;;
+      ask)
+        if [ -t 0 ]; then
+          read -r -p "[bleep] install LaunchAgent for gateway auto-start on login? [y/N] " ans
+          case "$ans" in
+            [yY]|[yY][eE][sS]) install_launch_agent; LA_STATUS="${HOME}/Library/LaunchAgents/${LAUNCH_AGENT_PLIST_NAME}" ;;
+            *) log "skipping LaunchAgent" ;;
+          esac
+        else
+          log "non-interactive — skipping LaunchAgent"
+        fi
+        ;;
+    esac
+    print_summary "$APP_PATH" "$LA_STATUS"
+    return
+  fi
 
   VERSION=$(resolve_version)
   log "installing version: ${VERSION}"

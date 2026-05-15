@@ -106,29 +106,8 @@ tasks:
       ARCH:
         sh: uname -m | sed 's/arm64/aarch64/'
       TARGET: "{{.ARCH}}-apple-darwin"
-      APP_DEST: '{{if (stat "/Applications")}}{{if (isDir "/Applications")}}/Applications{{else}}{{.HOME}}/Applications{{end}}{{else}}{{.HOME}}/Applications{{end}}'
     cmds:
-      - echo "[install-local] building bleep-gateway (release)..."
-      - cargo build --release --bin bleep-gateway
-      - echo "[install-local] building Bleep.app..."
-      - cd apps/menu-bar/src-tauri && cargo tauri build --target {{.TARGET}}
-      - echo "[install-local] installing gateway to {{.PREFIX}}..."
-      - mkdir -p "{{.PREFIX}}/bin" "{{.PREFIX}}/lib/bleep/src"
-      - cp target/release/bleep-gateway "{{.PREFIX}}/bin/bleep-gateway"
-      - cp claude-wrapper.sh "{{.PREFIX}}/lib/bleep/bleep-wrapper.sh"
-      - chmod +x "{{.PREFIX}}/lib/bleep/bleep-wrapper.sh"
-      - bash scripts/extract-cert.sh "{{.PREFIX}}/lib/bleep/src"
-      - ln -sf "{{.PREFIX}}/lib/bleep/bleep-wrapper.sh" "{{.PREFIX}}/bin/bleep"
-      - echo "[install-local] installing Bleep.app..."
-      - mkdir -p "{{.HOME}}/Applications"
-      - cp -R "apps/menu-bar/src-tauri/target/{{.TARGET}}/release/bundle/macos/Bleep.app" "{{.HOME}}/Applications/"
-      - xattr -r -d com.apple.quarantine "{{.HOME}}/Applications/Bleep.app" 2>/dev/null || true
-      - codesign --force --deep -s - "{{.HOME}}/Applications/Bleep.app" 2>/dev/null || true
-      - echo "[install-local] done."
-      - echo "  bleep      -> {{.PREFIX}}/bin/bleep"
-      - echo "  gateway    -> {{.PREFIX}}/bin/bleep-gateway"
-      - echo "  Bleep.app  -> {{.HOME}}/Applications/Bleep.app"
-      - echo "Make sure {{.PREFIX}}/bin is on your PATH."
+      - bash install.sh --local --prefix="{{.PREFIX}}"
 
   test-installer:
     desc: run installer end-to-end smoke test against a synthetic local release
