@@ -85,18 +85,38 @@ tasks:
     cmds:
       - cargo clean
 
+  install-hooks:
+    desc: install cocogitto's commit-msg + pre-push hooks (run once after cloning the repo)
+    cmds:
+      - bash scripts/install-git-hooks.sh
+
   release:
-    desc: print the manual release procedure (CI does the heavy lifting)
+    desc: explain the release pipeline (you don't run this manually — push to main fires it)
     cmds:
       - |
         cat <<'EOF'
-        Release procedure:
-          1. Update Cargo.toml `version` if you want it to match the tag.
-          2. Commit + push to main.
-          3. git tag vX.Y.Z && git push --tags
-          4. GitHub Actions builds + uploads draft release with 4 archives + checksums.txt.
-          5. Smoke-test: download install.sh from the draft release tree and run it on a clean macOS user.
-          6. Promote the draft to a published release via GitHub UI when satisfied.
+        Release pipeline (cocogitto + GitHub Actions):
+
+          1. Write conventional commits:
+               feat: <subject>          → MINOR bump (0.1.0 → 0.2.0)
+               fix: <subject>           → PATCH bump (0.1.0 → 0.1.1)
+               perf: <subject>          → PATCH bump
+               feat!: <subject>         → MAJOR bump (0.1.0 → 1.0.0)
+               chore|docs|refactor|...  → no bump, no release
+
+          2. Push to main. .github/workflows/release.yml will:
+                cog check     — fail on any non-conventional commit
+                cog bump --auto — pick next semver, edit Cargo.toml ×3,
+                                  tauri.conf.json, Cargo.lock ×2,
+                                  CHANGELOG.md, commit, tag
+
+          3. The tag push triggers .github/workflows/build.yml which:
+                builds bleep-gateway for aarch64 + x86_64 Darwin
+                builds Bleep.app .tar.gz for each target
+                publishes a GitHub Release with all artifacts + checksums.txt
+
+        First-time setup (one shot per clone):
+          task install-hooks    # local commit-msg + pre-push validation
         EOF
 
   install-local:
@@ -113,3 +133,17 @@ tasks:
     desc: run installer end-to-end smoke test against a synthetic local release
     cmds:
       - bash scripts/test-installer.sh
+
+  eval:capture:
+    desc: run gateway (release build) with request logging enabled for eval
+    env:
+      RUST_LOG: info
+      BLEEP_LOG_REQUESTS: "1"
+      BLEEP_LOG_PATH: /tmp
+    cmds:
+      - cargo run --release --bin {{.BIN}} -- {{.CLI_ARGS}}
+
+  eval:
+    desc: scan /tmp/all_requests.jsonl for missed redactions against combined.yaml
+    cmds:
+      - python3 scripts/eval-missed-redactions.py {{.CLI_ARGS}}

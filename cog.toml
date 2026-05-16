@@ -1,0 +1,67 @@
+# cocogitto config (cog v7+)
+# https://docs.cocogitto.io/config/
+#
+# Drives the conventional-commit → semver pipeline. `cog bump --auto` reads
+# every commit since the last tag, decides the next version (feat → minor,
+# fix/perf → patch, !/BREAKING → major), runs pre_bump_hooks to edit the
+# four version files, regenerates CHANGELOG.md, commits, and tags.
+
+tag_prefix = ""  # tags are bare "1.2.3", not "v1.2.3"
+branch_whitelist = ["main"]
+ignore_merge_commits = true
+
+# Sync version across all four package files at bump time. Each line is a
+# shell command; {{version}} is substituted by cocogitto BEFORE execution.
+#
+# Order matters:
+#   1. edit the manifests (sed for TOML, python for JSON)
+#   2. refresh Cargo.lock files so they reflect the new versions
+#   3. `git add` the modified files so cog's bump commit picks them up
+#
+# cog itself creates the commit + tag after pre_bump_hooks complete and
+# stages CHANGELOG.md automatically.
+pre_bump_hooks = [
+  "echo 'cog: bumping to {{version}}'",
+  # Bump every [package].version line. The first `version = "..."` in each
+  # Cargo.toml is the package version (line 3 in all three of ours).
+  # Portable across BSD sed (macOS) and GNU sed (Linux CI): write to a tmp
+  # file and move it back, no -i flag variation needed.
+  "for f in Cargo.toml crates/bleep-events/Cargo.toml apps/menu-bar/src-tauri/Cargo.toml; do awk 'BEGIN{done=0} !done && /^version = \".*\"$/ {sub(/\".*\"/, \"\\\"{{version}}\\\"\"); done=1} {print}' \"$f\" > \"$f.tmp\" && mv \"$f.tmp\" \"$f\"; done",
+  # Tauri config — JSON, edited via python (always available on runners).
+  "python3 -c \"import json; p='apps/menu-bar/src-tauri/tauri.conf.json'; d=json.load(open(p)); d['version']='{{version}}'; open(p,'w').write(json.dumps(d, indent=2) + chr(10))\"",
+  # Refresh Cargo.lock files so they reflect the new versions.
+  "cargo update --workspace",
+  "cargo update --manifest-path apps/menu-bar/src-tauri/Cargo.toml",
+  # Stage all the modified files so cog's bump commit captures them.
+  "git add Cargo.toml Cargo.lock crates/bleep-events/Cargo.toml apps/menu-bar/src-tauri/Cargo.toml apps/menu-bar/src-tauri/Cargo.lock apps/menu-bar/src-tauri/tauri.conf.json",
+]
+
+# Conventional commit type → bump rule. Defaults are sensible; declared
+# explicitly here so the policy is grep-able.
+#  feat  → minor
+#  fix   → patch
+#  perf  → patch
+#  refactor / docs / test / ci / build / chore / style → no bump, no release
+# A `!` after the type (e.g. `feat!: drop /v1 endpoint`) or a `BREAKING CHANGE:`
+# footer flips the bump to major regardless of type.
+[commit_types]
+feat = { changelog_title = "Features" }
+fix = { changelog_title = "Bug Fixes" }
+perf = { changelog_title = "Performance" }
+refactor = { changelog_title = "Refactoring" }
+docs = { changelog_title = "Documentation" }
+ci = { changelog_title = "CI" }
+build = { changelog_title = "Build" }
+test = { changelog_title = "Tests" }
+style = { changelog_title = "Styling", omit_from_changelog = true }
+chore = { changelog_title = "Chores", omit_from_changelog = true }
+
+[changelog]
+path = "CHANGELOG.md"
+template = "remote"
+remote = "github.com"
+repository = "bleep-ai"
+owner = "tanguc"
+authors = [
+  { signature = "tanguc", username = "tanguc" },
+]
