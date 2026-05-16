@@ -4,6 +4,7 @@
 use std::sync::{Arc, LazyLock};
 
 use aho_corasick::AhoCorasick;
+use rayon::prelude::*;
 use regex::bytes::Regex;
 
 use crate::types::rule::NormalizedRule;
@@ -69,7 +70,7 @@ pub static COMBINED: LazyLock<AhoCorasick> = LazyLock::new(|| {
 /// them in (?x) verbose patterns; Rust regex supports only # line comments in (?x) mode.
 pub static RULES: LazyLock<Vec<(Arc<NormalizedRule>, Regex)>> = LazyLock::new(|| {
     NORMALIZED_RULES
-        .iter()
+        .par_iter()
         .map(|r| {
             let cleaned = strip_posix_comments(&r.regex);
             let re = regex::bytes::RegexBuilder::new(&cleaned)
