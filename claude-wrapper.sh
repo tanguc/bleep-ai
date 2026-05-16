@@ -52,7 +52,25 @@ _gateway_running() {
     return 1
 }
 
+# kill any hung process holding the proxy port but not responding to health checks
+_evict_hung_gateway() {
+    nc -z 127.0.0.1 9190 2>/dev/null || return 0   # port free — nothing to do
+    local pid
+    pid="$(lsof -ti tcp:9190 2>/dev/null | head -1)"
+    [ -n "$pid" ] || return 0
+    echo "[bleep] port 9190 held by PID $pid (not healthy) — sending SIGTERM" >&2
+    kill -TERM "$pid" 2>/dev/null || true
+    local waited=0
+    while [ "$waited" -lt 30 ]; do
+        sleep 0.1; waited=$((waited + 1))
+        nc -z 127.0.0.1 9190 2>/dev/null || return 0   # port released
+    done
+    echo "[bleep] SIGTERM ignored, sending SIGKILL to PID $pid" >&2
+    kill -KILL "$pid" 2>/dev/null || true
+}
+
 if ! _gateway_running; then
+    _evict_hung_gateway
     if [ -x "$_GATEWAY_BIN" ]; then
         echo "[bleep] gateway not running — starting daemon..." >&2
         nohup "$_GATEWAY_BIN" \
@@ -61,8 +79,8 @@ if ! _gateway_running; then
             </dev/null &
         # wait up to 5s for gateway to be ready
         _waited=0
-        while [ "$_waited" -lt 5 ]; do
-            sleep 1
+        while [ "$_waited" -lt 50 ]; do
+            sleep 0.1
             _waited=$((_waited + 1))
             _gateway_running && break
         done
