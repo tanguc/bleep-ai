@@ -1230,8 +1230,12 @@ pub fn run(opts: &RunOptions) -> RunResult {
                 panic!("rule_pipeline: malformed {custom_path}: {e}")
             });
             custom_rules = cu_file.rules;
+            // vendor-prefixed ids in custom.yaml are intentional overrides that
+            // should replace the upstream rule via the merge HashMap below.
+            // unprefixed ids are namespaced under `custom.` as before.
+            const VENDOR_PREFIXES: &[&str] = &["custom.", "gl.", "np.", "ha.", "spdb."];
             for rule in &mut custom_rules {
-                if !rule.id.starts_with("custom.") {
+                if !VENDOR_PREFIXES.iter().any(|p| rule.id.starts_with(p)) {
                     rule.id = format!("custom.{}", rule.id);
                 }
                 if rule.source.is_empty() {
