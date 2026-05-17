@@ -13,7 +13,7 @@ rules:
   subcategory: btc
   source: custom
   confidence: medium
-  regex: \b(?:[13][a-km-zA-HJ-NP-Z1-9]{25,34}|bc1[a-z0-9]{20,80})\b
+  regex: \b(?:[13][1-9A-HJ-NP-Za-km-z]{25,34}|bc1[a-z0-9]{20,80})\b
   keywords:
   - bitcoin
   - btc
@@ -31,7 +31,7 @@ rules:
   subcategory: cc
   source: custom
   confidence: medium
-  regex: \b(?:4[0-9]{3}[ -]?[0-9]{4}[ -]?[0-9]{4}[ -]?[0-9]{4}|[25][1-7][0-9]{2}[ -]?[0-9]{4}[ -]?[0-9]{4}[ -]?[0-9]{4}|3[47][0-9]{2}[ -]?[0-9]{6}[ -]?[0-9]{5}|6011[ -]?[0-9]{4}[ -]?[0-9]{4}[ -]?[0-9]{4})\b
+  regex: \b(?:4[0-9]{3}[ -][0-9]{4}[ -][0-9]{4}[ -][0-9]{4}|[25][1-7][0-9]{2}[ -][0-9]{4}[ -][0-9]{4}[ -][0-9]{4}|3[47][0-9]{2}[ -][0-9]{6}[ -][0-9]{5}|6011[ -][0-9]{4}[ -][0-9]{4}[ -][0-9]{4})\b
   keywords:
   - card
   - visa
@@ -3446,20 +3446,21 @@ rules:
   description: Uncovered a Sonar API token, potentially compromising software vulnerability scanning and code security.
   severity: high
 - id: gl.sourcegraph-access-token
-  name: Sourcegraph is a code search and navigation engine.
+  name: Sourcegraph Access Token
   category: secret
   subcategory: generic
   source: gitleaks
   confidence: high
-  regex: (?i)\b(\b(sgp_(?:[a-fA-F0-9]{16}|local)_[a-fA-F0-9]{40}|sgp_[a-fA-F0-9]{40}|[a-fA-F0-9]{40})\b)(?:[\x60'"\s;]|\\[nr]|$)
+  regex: \b(sgp(?:h?)_(?:[a-fA-F0-9]{16}_|local_)?[a-fA-F0-9]{40})\b
   keywords:
   - sgp_
+  - sgph_
   - sourcegraph
-  entropy: 3.0
+  entropy: null
   tags: []
   checksum_type: null
   replacement_type: faker_api_key
-  description: Sourcegraph is a code search and navigation engine.
+  description: Sourcegraph access token (requires sgp_ or sgph_ prefix)
   severity: high
 - id: gl.square-access-token
   name: Detected a Square Access Token, risking unauthorized payment processing and financial transaction exposure.
@@ -3789,16 +3790,20 @@ rules:
   subcategory: de-taxid
   source: hand-authored
   confidence: low
-  regex: \b[1-9][0-9]{10}\b
+  regex: \b([1-9][0-9]{10})\b
   keywords:
   - steueridentifikationsnummer
   - steuer-id
+  - steuerid
+  - steuernummer
+  - tax id
+  - taxid
   entropy: null
   tags:
   - hand-authored
   checksum_type: null
   replacement_type: generic_random
-  description: German Steueridentifikationsnummer (11 digits, format-match only)
+  description: German Steueridentifikationsnummer (11 digits), only fires when German tax keyword present
   severity: medium
 - id: ha.pii.fr-insee
   name: French INSEE Number
@@ -3806,16 +3811,19 @@ rules:
   subcategory: fr-insee
   source: hand-authored
   confidence: low
-  regex: \b[12][0-9]{2}(0[1-9]|[1-9][0-9])(2[AB]|[0-9]{2})[0-9]{3}[0-9]{3}[0-9]{2}\b
+  regex: \b([12][0-9]{2}(0[1-9]|[1-9][0-9])(2[AB]|[0-9]{2})[0-9]{3}[0-9]{3}[0-9]{2})\b
   keywords:
   - insee
   - secu
+  - securite sociale
+  - numero de securite
+  - nir
   entropy: null
   tags:
   - hand-authored
   checksum_type: null
   replacement_type: generic_random
-  description: French INSEE/NIR social security number (15 digits, format-match only)
+  description: French INSEE/NIR social security number, only fires when INSEE keyword present
   severity: medium
 - id: ha.pii.pl-pesel
   name: Polish PESEL Number
@@ -3854,17 +3862,19 @@ rules:
   subcategory: generic
   source: hand-authored
   confidence: low
-  regex: \b[A-Za-z0-9_-]{44}\b
+  regex: \b([A-Za-z0-9_-]{44})\b
   keywords:
   - ibm
   - iam_apikey
   - ibmcloud
+  - bx login
+  - apikey=
   entropy: null
   tags:
   - hand-authored
   checksum_type: null
   replacement_type: faker_api_key
-  description: IBM Cloud IAM token (44-char alphanumeric, confidence low until format verified)
+  description: IBM Cloud IAM token (44-char alphanumeric, requires IBM context keyword)
   severity: medium
 - id: np.adafruit.1
   name: Adafruit IO Key
@@ -4846,27 +4856,21 @@ rules:
   description: ''
   severity: high
 - id: np.gcs.2
-  name: Google Cloud Storage Bucket
+  name: Google Cloud Storage Signed URL
   category: secret
   subcategory: generic
   source: nosey-parker
   confidence: high
-  regex: |+
-    (?x)
-    (?: ^ | [\s/"'] | %2F )
-    (
-    storage\.googleapis\.com
-    /
-    [a-zA-Z0-9_-]+ (?: \. [a-zA-Z0-9_-]+ )*    (?# bucket name as path )
-    )
-    (?: [^a-zA-Z0-9_-] | $ )                   (?# this instead of a \b anchor because that doesn't play nicely with `-` )
-
-  keywords: []
+  regex: (?:storage\.googleapis\.com/[a-zA-Z0-9_-]+(?:\.[a-zA-Z0-9_-]+)*[^\s]*(?:X-Goog-Signature=|GoogleAccessId=)[^\s]*)
+  keywords:
+  - storage.googleapis.com
+  - X-Goog-Signature
+  - GoogleAccessId
   entropy: null
   tags: []
   checksum_type: null
   replacement_type: faker_api_key
-  description: ''
+  description: Google Cloud Storage signed URL (must contain credential parameters)
   severity: high
 - id: np.generic.10
   name: Connection String in .NET Configuration
@@ -6812,53 +6816,16 @@ rules:
   subcategory: generic
   source: nosey-parker
   confidence: high
-  regex: |+
-    (?x)
-    (?: ^ | [\s/"'] | %2F )
-    (
-    (?: [a-zA-Z0-9_-]+ \. )+   (?# bucket name as subdomain )
-    (?: s3
-      | s3-af-south-1
-      | s3-ap-east-1
-      | s3-ap-northeast-1
-      | s3-ap-northeast-2
-      | s3-ap-northeast-3
-      | s3-ap-south-1
-      | s3-ap-south-2
-      | s3-ap-southeast-1
-      | s3-ap-southeast-2
-      | s3-ap-southeast-3
-      | s3-ap-southeast-4
-      | s3-ca-central-1
-      | s3-eu-central-1
-      | s3-eu-central-2
-      | s3-eu-north-1
-      | s3-eu-south-1
-      | s3-eu-south-2
-      | s3-eu-west-1
-      | s3-eu-west-2
-      | s3-eu-west-3
-      | s3-me-central-1
-      | s3-me-south-1
-      | s3-sa-east-1
-      | s3-us-east-1
-      | s3-us-east-2
-      | s3-us-gov-east-1
-      | s3-us-gov-west-1
-      | s3-us-west-1
-      | s3-us-west-2
-      )
-    \.amazonaws\.com
-    ) \b
-
-  keywords: []
+  regex: \b((?:[a-zA-Z0-9_-]+\.)+(?:s3|s3-[a-z0-9-]+)\.amazonaws\.com|s3://[a-zA-Z0-9_-]+)\b
+  keywords:
+  - amazonaws.com
+  - s3://
+  - s3.amazonaws
   entropy: null
-  tags:
-  - api
-  - identifier
+  tags: []
   checksum_type: null
   replacement_type: faker_api_key
-  description: ''
+  description: AWS S3 bucket reference anchored to .amazonaws.com or s3:// scheme
   severity: high
 - id: np.s3.2
   name: AWS S3 Bucket
@@ -7572,13 +7539,13 @@ rules:
   subcategory: email
   source: secrets-patterns-db
   confidence: high
-  regex: ([a-z0-9!#$%&'*+\/=?^_`{|.}~-]+@(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)
+  regex: ([a-z0-9!#$%&'*+\/=?^_`{|.}~-]+@(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)*(?:[a-z0-9-]{1,6}|[a-z0-9-]{8,}|[a-z0-9-]*[0-9][a-z0-9-]*|[a-df-z][a-z0-9-]{6}|e[a-wyz0-9][a-z0-9-]{5}|ex[b-z0-9][a-z0-9-]{4}|exa[b-z0-9][a-z0-9-]{3}|exam[b-z0-9][a-z0-9-]{2}|examp[b-z0-9][a-z0-9-]|exampl[a-df-z0-9])\.(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?))
   keywords: []
   entropy: null
   tags: []
   checksum_type: null
   replacement_type: faker_email
-  description: ''
+  description: Email address excluding RFC 2606 reserved placeholder domains (example.com/net/org/invalid)
   severity: high
 - id: spdb.iban-numbers
   name: iban_numbers
@@ -7600,13 +7567,13 @@ rules:
   subcategory: cc
   source: secrets-patterns-db
   confidence: high
-  regex: \b(?:4[0-9]{12}(?:[0-9]{3})?|[25][1-7][0-9]{14}|6(?:011|5[0-9][0-9])[0-9]{12}|3[47][0-9]{13}|3(?:0[0-5]|[68][0-9])[0-9]{11}|(?:2131|1800|35\d{3})\d{11})\b
+  regex: \b(?:5[1-5][0-9]{14}|2(?:2[2-9][1-9]|2[3-9][0-9]|[3-6][0-9]{2}|7[01][0-9]|720)[0-9]{12})\b
   keywords: []
   entropy: null
   tags: []
   checksum_type: luhn
   replacement_type: faker_cc_luhn
-  description: ''
+  description: MasterCard credit card (16 digits, Luhn validated, excludes Diners/JCB)
   severity: high
 - id: spdb.phones-with-exts
   name: phones_with_exts

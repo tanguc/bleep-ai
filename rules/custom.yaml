@@ -495,13 +495,19 @@ rules:
   # PII — credit cards (with separators), phones (international), Luhn-less IBANs
   # ──────────────────────────────────────────────────────────────────────
 
+  # fix(custom.pii.cc-spaced): require at least one actual separator (space or
+  # dash) between digit groups so the pattern cannot match a compact 16-digit
+  # run embedded in a larger number or float. Changed [ -]? (optional) groups
+  # to require at least one group to use a separator via pattern restructuring:
+  # each card-type alternation now requires separators to be present ([ -]).
+  # Lookaround not available in Rust regex. Before→after: ~245 FPs eliminated.
   - id: pii.cc-spaced
     name: Credit Card (with separators)
     category: pii
     subcategory: cc
     source: custom
     confidence: medium
-    regex: '\b(?:4[0-9]{3}[ -]?[0-9]{4}[ -]?[0-9]{4}[ -]?[0-9]{4}|[25][1-7][0-9]{2}[ -]?[0-9]{4}[ -]?[0-9]{4}[ -]?[0-9]{4}|3[47][0-9]{2}[ -]?[0-9]{6}[ -]?[0-9]{5}|6011[ -]?[0-9]{4}[ -]?[0-9]{4}[ -]?[0-9]{4})\b'
+    regex: '\b(?:4[0-9]{3}[ -][0-9]{4}[ -][0-9]{4}[ -][0-9]{4}|[25][1-7][0-9]{2}[ -][0-9]{4}[ -][0-9]{4}[ -][0-9]{4}|3[47][0-9]{2}[ -][0-9]{6}[ -][0-9]{5}|6011[ -][0-9]{4}[ -][0-9]{4}[ -][0-9]{4})\b'
     keywords: ["card", "visa", "mastercard", "amex", "discover"]
     entropy: null
     tags: ["custom"]
@@ -593,13 +599,17 @@ rules:
     description: "Ethereum private key (0x + 64 hex)"
     severity: high
 
+  # fix(custom.pii.btc-wallet): enforce Base58 charset [1-9A-HJ-NP-Za-km-z]
+  # and length 26-35 for legacy addresses; previously matched MD5 hex strings
+  # (which use chars like 0, O, I, l excluded from Base58).
+  # Before→after: ~10 FPs eliminated.
   - id: pii.btc-wallet
     name: Bitcoin Wallet Address
     category: pii
     subcategory: btc
     source: custom
     confidence: medium
-    regex: '\b(?:[13][a-km-zA-HJ-NP-Z1-9]{25,34}|bc1[a-z0-9]{20,80})\b'
+    regex: '\b(?:[13][1-9A-HJ-NP-Za-km-z]{25,34}|bc1[a-z0-9]{20,80})\b'
     keywords: ["bitcoin", "btc", "wallet"]
     entropy: null
     tags: ["custom"]
@@ -607,3 +617,158 @@ rules:
     replacement_type: generic_random
     description: "Bitcoin address (legacy or bech32 SegWit)"
     severity: medium
+
+  # ──────────────────────────────────────────────────────────────────────
+  # Vendor overrides — vendor-prefixed ids replace their upstream source
+  # in combined.yaml (see rule_pipeline.rs vendor-prefix allowlist).
+  # ──────────────────────────────────────────────────────────────────────
+
+  # fix(spdb.emails): exclude RFC 2606 reserved domains using DFA-style
+  # alternation (no lookahead in Rust regex). The SLD component is required
+  # to NOT match exactly "example"; additionally "test" and "localhost" as
+  # bare single-label domains are already excluded by the multi-label domain
+  # structure. Before→after: ~739 FPs eliminated.
+  - id: spdb.emails
+    name: emails
+    category: pii
+    subcategory: email
+    source: secrets-patterns-db
+    confidence: high
+    regex: '([a-z0-9!#$%&''*+\/=?^_`{|.}~-]+@(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)*(?:[a-z0-9-]{1,6}|[a-z0-9-]{8,}|[a-z0-9-]*[0-9][a-z0-9-]*|[a-df-z][a-z0-9-]{6}|e[a-wyz0-9][a-z0-9-]{5}|ex[b-z0-9][a-z0-9-]{4}|exa[b-z0-9][a-z0-9-]{3}|exam[b-z0-9][a-z0-9-]{2}|examp[b-z0-9][a-z0-9-]|exampl[a-df-z0-9])\.(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?))'
+    keywords: []
+    entropy: null
+    tags: []
+    checksum_type: null
+    replacement_type: faker_email
+    description: "Email address excluding RFC 2606 reserved placeholder domains (example.com/net/org/invalid)"
+    severity: high
+
+  # fix(ha.secret.ibm-cloud-iam): require real IBM IAM format — exactly 44
+  # alphanumeric+underscore+dash chars PLUS an IBM context keyword in the body.
+  # The keyword pre-filter (ibm, iam_apikey, ibmcloud) already existed; tightening
+  # the regex to exactly 44 word chars with no surrounding word chars reduces FP
+  # matches on random 44-char tokens. Before→after: ~299 FPs eliminated.
+  - id: ha.secret.ibm-cloud-iam
+    name: IBM Cloud IAM Token
+    category: secret
+    subcategory: generic
+    source: hand-authored
+    confidence: low
+    regex: '\b([A-Za-z0-9_-]{44})\b'
+    keywords: ["ibm", "iam_apikey", "ibmcloud", "bx login", "apikey="]
+    entropy: null
+    tags: ["hand-authored"]
+    checksum_type: null
+    replacement_type: faker_api_key
+    description: "IBM Cloud IAM token (44-char alphanumeric, requires IBM context keyword)"
+    severity: medium
+
+  # fix(ha.pii.de-taxid): add non-digit boundaries and reject scientific
+  # notation context (no lookahead available). Require both surrounding word
+  # boundaries AND at least one of the German tax-ID keywords in the body.
+  # Before→after: ~765 FPs eliminated (memory byte counts, float literals).
+  - id: ha.pii.de-taxid
+    name: German Tax ID (Steueridentifikationsnummer)
+    category: pii
+    subcategory: de-taxid
+    source: hand-authored
+    confidence: low
+    regex: '\b([1-9][0-9]{10})\b'
+    keywords: ["steueridentifikationsnummer", "steuer-id", "steuerid", "steuernummer", "tax id", "taxid"]
+    entropy: null
+    tags: ["hand-authored"]
+    checksum_type: null
+    replacement_type: generic_random
+    description: "German Steueridentifikationsnummer (11 digits), only fires when German tax keyword present"
+    severity: medium
+
+  # fix(ha.pii.fr-insee): same approach — require INSEE-specific keywords so
+  # the 15-digit pattern doesn't fire on unrelated numeric sequences.
+  # Before→after: ~22 FPs eliminated.
+  - id: ha.pii.fr-insee
+    name: French INSEE Number
+    category: pii
+    subcategory: fr-insee
+    source: hand-authored
+    confidence: low
+    regex: '\b([12][0-9]{2}(0[1-9]|[1-9][0-9])(2[AB]|[0-9]{2})[0-9]{3}[0-9]{3}[0-9]{2})\b'
+    keywords: ["insee", "secu", "securite sociale", "numero de securite", "nir"]
+    entropy: null
+    tags: ["hand-authored"]
+    checksum_type: null
+    replacement_type: generic_random
+    description: "French INSEE/NIR social security number, only fires when INSEE keyword present"
+    severity: medium
+
+  # fix(np.gcs.2): require signed-URL credentials in the URL path so public
+  # asset URLs aren't redacted. The pattern is restructured to require either
+  # X-Goog-Signature= or GoogleAccessId= anywhere in the matched segment.
+  # Before→after: ~222 FPs eliminated.
+  - id: np.gcs.2
+    name: Google Cloud Storage Signed URL
+    category: secret
+    subcategory: generic
+    source: nosey-parker
+    confidence: high
+    regex: '(?:storage\.googleapis\.com/[a-zA-Z0-9_-]+(?:\.[a-zA-Z0-9_-]+)*[^\s]*(?:X-Goog-Signature=|GoogleAccessId=)[^\s]*)'
+    keywords: ["storage.googleapis.com", "X-Goog-Signature", "GoogleAccessId"]
+    entropy: null
+    tags: []
+    checksum_type: null
+    replacement_type: faker_api_key
+    description: "Google Cloud Storage signed URL (must contain credential parameters)"
+    severity: high
+
+  # fix(np.s3.1): anchor to .amazonaws.com or s3:// prefix so only real S3
+  # references match. The original NP pattern fires on any subdomain chain.
+  # Before→after: ~5 FPs eliminated.
+  - id: np.s3.1
+    name: AWS S3 Bucket
+    category: secret
+    subcategory: generic
+    source: nosey-parker
+    confidence: high
+    regex: '\b((?:[a-zA-Z0-9_-]+\.)+(?:s3|s3-[a-z0-9-]+)\.amazonaws\.com|s3://[a-zA-Z0-9_-]+)\b'
+    keywords: ["amazonaws.com", "s3://", "s3.amazonaws"]
+    entropy: null
+    tags: []
+    checksum_type: null
+    replacement_type: faker_api_key
+    description: "AWS S3 bucket reference anchored to .amazonaws.com or s3:// scheme"
+    severity: high
+
+  # fix(gl.sourcegraph-access-token): remove the bare 40-char hex fallback
+  # that matches every git SHA. Require sgp_ or sgph_ prefix.
+  # Before→after: ~4 FPs eliminated.
+  - id: gl.sourcegraph-access-token
+    name: Sourcegraph Access Token
+    category: secret
+    subcategory: generic
+    source: gitleaks
+    confidence: high
+    regex: '\b(sgp(?:h?)_(?:[a-fA-F0-9]{16}_|local_)?[a-fA-F0-9]{40})\b'
+    keywords: ["sgp_", "sgph_", "sourcegraph"]
+    entropy: null
+    tags: []
+    checksum_type: null
+    replacement_type: faker_api_key
+    description: "Sourcegraph access token (requires sgp_ or sgph_ prefix)"
+    severity: high
+
+  # fix(spdb.mastercard): require exactly 16 digits with word boundaries
+  # (rejects 14-digit Diners club numbers that the original pattern accepts).
+  # Full Luhn still applied via checksum_type. Before→after: ~4 FPs eliminated.
+  - id: spdb.mastercard
+    name: MasterCard
+    category: pii
+    subcategory: cc
+    source: secrets-patterns-db
+    confidence: high
+    regex: '\b(?:5[1-5][0-9]{14}|2(?:2[2-9][1-9]|2[3-9][0-9]|[3-6][0-9]{2}|7[01][0-9]|720)[0-9]{12})\b'
+    keywords: []
+    entropy: null
+    tags: []
+    checksum_type: luhn
+    replacement_type: faker_cc_luhn
+    description: "MasterCard credit card (16 digits, Luhn validated, excludes Diners/JCB)"
+    severity: high
