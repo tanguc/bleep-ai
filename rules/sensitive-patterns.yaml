@@ -1,0 +1,152 @@
+# Bleep sensitive data detection rules
+# sources: Gitleaks (MIT), Nosey Parker (Apache 2.0), Presidio (MIT)
+#
+# each rule: id, name, category (secret|pii|infra), severity (high|medium|low),
+# regex, and description
+
+rules:
+  # --- secrets / credentials ---
+
+  - id: aws-access-key
+    name: AWS Access Key ID
+    category: secret
+    severity: high
+    regex: '(?:^|[^A-Z0-9])(AKIA[0-9A-Z]{16})(?:[^A-Z0-9]|$)'
+    description: AWS access key IDs start with AKIA followed by 16 alphanumeric chars
+
+  - id: aws-secret-key
+    name: AWS Secret Access Key
+    category: secret
+    severity: high
+    regex: '(?i)(?:aws_secret_access_key|aws_secret|secret_key)\s*[=:]\s*["\x27]?([A-Za-z0-9/+=]{40})["\x27]?'
+    description: AWS secret access key (40 char base64)
+
+  - id: github-token
+    name: GitHub Token
+    category: secret
+    severity: high
+    regex: '(ghp_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9]{22}_[A-Za-z0-9]{59}|gho_[A-Za-z0-9]{36}|ghs_[A-Za-z0-9]{36}|ghr_[A-Za-z0-9]{36})'
+    description: GitHub personal access token, OAuth, app, or refresh token
+
+  - id: generic-api-key
+    name: Generic API Key Assignment
+    category: secret
+    severity: medium
+    regex: '(?i)(?:api_key|apikey|api-key|x-api-key)\s*[=:]\s*["\x27]?([A-Za-z0-9_\-]{20,64})["\x27]?'
+    description: Generic API key in assignment or header context
+
+  - id: private-key-pem
+    name: PEM Private Key
+    category: secret
+    severity: high
+    regex: '-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----'
+    description: PEM-encoded private key block header
+
+  - id: jwt-token
+    name: JSON Web Token
+    category: secret
+    severity: medium
+    regex: '\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b'
+    description: JWT with three base64url-encoded segments
+
+  - id: slack-token
+    name: Slack Token
+    category: secret
+    severity: high
+    regex: '(xox[bpears]-[0-9]{10,13}-[0-9]{10,13}-[a-zA-Z0-9]{24,34})'
+    description: Slack bot, user, or app token
+
+  - id: stripe-secret-key
+    name: Stripe Secret Key
+    category: secret
+    severity: high
+    regex: '(sk_live_[A-Za-z0-9]{24,99})'
+    description: Stripe live secret key
+
+  - id: anthropic-api-key
+    name: Anthropic API Key
+    category: secret
+    severity: high
+    regex: '(sk-ant-[A-Za-z0-9_-]{80,})'
+    description: Anthropic API key
+
+  - id: openai-api-key
+    name: OpenAI API Key
+    category: secret
+    severity: high
+    regex: '(sk-[A-Za-z0-9]{20,}T3BlbkFJ[A-Za-z0-9]{20,})'
+    description: OpenAI API key with T3BlbkFJ marker
+
+  - id: generic-password
+    name: Generic Password Assignment
+    category: secret
+    severity: medium
+    regex: '(?i)(?:password|passwd|pwd)\s*[=:]\s*["\x27]([^"\x27\s]{8,})["\x27]'
+    description: Password assigned in config or code
+
+  - id: connection-string
+    name: Database Connection String
+    category: secret
+    severity: high
+    regex: '(?i)(?:postgres|mysql|mongodb|redis|amqp)(?:ql)?://[^\s"''<>]{10,}'
+    description: Database or message broker connection URI with credentials
+
+  # --- PII ---
+
+  - id: email-address
+    name: Email Address
+    category: pii
+    severity: medium
+    regex: '\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b'
+    description: Standard email address format
+
+  - id: credit-card
+    name: Credit Card Number
+    category: pii
+    severity: high
+    regex: '\b(?:4[0-9]{12}(?:[0-9]{3})?|5[1-5][0-9]{14}|3[47][0-9]{13}|6(?:011|5[0-9]{2})[0-9]{12})\b'
+    description: Visa, Mastercard, Amex, or Discover card number (Luhn not checked)
+
+  - id: us-ssn
+    name: US Social Security Number
+    category: pii
+    severity: high
+    regex: '\b[0-9]{3}-[0-9]{2}-[0-9]{4}\b'
+    description: US SSN in XXX-XX-XXXX format
+
+  - id: phone-international
+    name: Phone Number (International)
+    category: pii
+    severity: medium
+    regex: '(?:\+\d{1,3}[\s.-])?\(?\d{2,4}\)?[\s.-]\d{3,4}[\s.-]\d{3,4}\b'
+    description: International phone number formats (requires separators)
+
+  - id: iban
+    name: IBAN
+    category: pii
+    severity: high
+    regex: '\b[A-Z]{2}\d{2}[A-Z0-9]{4}\d{7}(?:[A-Z0-9]{0,18})?\b'
+    description: International Bank Account Number (EU/global)
+
+  # --- infra / internal ---
+
+  - id: ipv4-private
+    name: Private IPv4 Address
+    category: infra
+    severity: low
+    regex: '\b(?:10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3})\b'
+    description: RFC 1918 private IP addresses
+
+  - id: bearer-token
+    name: Authorization Bearer Token
+    category: secret
+    severity: high
+    regex: '(?i)(?:authorization|auth)\s*[=:]\s*["\x27]?bearer\s+([A-Za-z0-9_\-.~+/]+=*)["\x27]?'
+    description: Bearer token in authorization header or config
+
+  - id: env-var-secret
+    name: Environment Variable Secret
+    category: secret
+    severity: medium
+    regex: '(?i)(?:export\s+)?(?:SECRET|TOKEN|PRIVATE|AUTH)[A-Z_]*\s*=\s*["\x27]?([^\s"'']{8,})["\x27]?'
+    description: Environment variable assignment containing secret/token/auth keywords

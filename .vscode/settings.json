@@ -1,19 +1,46 @@
 {
-    "editor.formatOnSave": true,
-    "editor.defaultFormatter": "rust-lang.rust-analyzer",
+    // ── formatting ───────────────────────────────────────────────────
     "[rust]": {
         "editor.defaultFormatter": "rust-lang.rust-analyzer",
         "editor.formatOnSave": true
     },
-    "rust-analyzer.check.command": "clippy",
-    "rust-analyzer.check.extraArgs": ["--", "-W", "clippy::pedantic"],
     "rust-analyzer.rustfmt.rangeFormatting.enable": true,
-    // The Tauri crate is intentionally outside the workspace (different
-    // dep tree, separate Cargo.lock). Listing both Cargo.toml files here
-    // tells rust-analyzer to index both, so go-to-definition / hover work
-    // for Tauri types like TrayIcon, MenuItem, WebviewWindowBuilder, etc.
+
+    // ── on-save: cargo check, NOT clippy + pedantic ──────────────────
+    // pedantic clippy on every save is 3-5x slower than `cargo check`.
+    // run clippy manually via `task lint` when you actually want it.
+    // allTargets: true — without this, RA analyzes src/ files in the
+    // context of whichever [[bin]] it picks first (tui, build-rules…),
+    // causing spurious dead_code warnings for symbols only used by the
+    // main bleep-gateway binary.
+    "rust-analyzer.check.command": "check",
+    "rust-analyzer.check.allTargets": true,
+
+    // ── target dir: separate from terminal builds ───────────────────
+    // without this, `cargo build` (or `task run`) and rust-analyzer
+    // fight for the same target/, invalidating each other constantly.
+    // RA gets its own target/rust-analyzer-check dir.
+    "rust-analyzer.cargo.targetDir": true,
+
+    // ── proc macros: enabled but with reasonable scope ──────────────
+    "rust-analyzer.procMacro.enable": true,
+    "rust-analyzer.cargo.buildScripts.enable": true,
+
+    // ── hover/inlay hints: keep but cap parameter inlay verbosity ───
+    "rust-analyzer.inlayHints.parameterHints.enable": false,
+    "rust-analyzer.inlayHints.closingBraceHints.enable": false,
+
+    // ── linked projects: gateway + Tauri crate (separate Cargo.locks) ─
     "rust-analyzer.linkedProjects": [
         "Cargo.toml",
         "apps/menu-bar/src-tauri/Cargo.toml"
-    ]
+    ],
+
+    // ── exclude noisy dirs from the file watcher ────────────────────
+    "files.watcherExclude": {
+        "**/target/**": true,
+        "**/.task/**": true,
+        "**/node_modules/**": true,
+        "**/.git/objects/**": true
+    }
 }

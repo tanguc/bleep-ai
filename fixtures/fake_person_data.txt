@@ -1,0 +1,581 @@
+================================================================================
+PII & SECRETS DETECTION TEST CORPUS — v2
+================================================================================
+ALL DATA IS SYNTHETIC. Names, IDs, keys, addresses, accounts, and credentials
+are fabricated for the purpose of testing DLP / secret-scanning engines.
+Token formats follow current public provider documentation (as of 2026) so
+that regex/entropy/prefix detectors can be exercised realistically.
+================================================================================
+
+
+################################################################################
+# SECTION 1 — IDENTITY PROFILE (the "subject")
+################################################################################
+
+Full legal name      : Jonathan Marcus Whitfield
+Known as             : Jon, "JMW"
+Date of birth        : 1987-03-14
+Place of birth       : Cleveland, Ohio, United States
+Sex                  : M
+Nationality          : USA (also holds Irish citizenship via descent)
+Marital status       : Married
+Spouse               : Eleanor Rose Whitfield (née Castellanos), DOB 1989-08-22
+Children             : Lucas Whitfield (2015-11-02), Maya Whitfield (2018-04-19)
+Mother's maiden name : Castellanos
+Father               : Robert James Whitfield (DOB 1958-02-09, deceased 2021-05)
+Height / Weight      : 5'11" / 178 lb
+Eye color            : Hazel
+Distinguishing marks : Small scar above left eyebrow; tattoo (compass) on right forearm
+
+Religion             : Catholic (non-practicing)
+Political affiliation: Independent (registered Democrat, OH)
+Languages            : English (native), Spanish (B2), German (A2)
+
+
+################################################################################
+# SECTION 2 — GOVERNMENT-ISSUED IDENTIFIERS
+################################################################################
+
+US Social Security Number ......: 412-55-7839
+SSN (no dashes) ................: 412557839
+US Passport number .............: X98237461
+US Passport expiry .............: 2031-06-30
+US Passport book/card ..........: Book
+Global Entry / Trusted Traveler : 9876543210
+TSA PreCheck KTN ...............: TT1234567A
+
+Driver's License (Ohio) ........: RB-487-2390
+DL Class .......................: D (regular)
+DL Issue / Expiry ..............: 2023-03-14 / 2028-03-14
+
+Voter Registration ID (OH) .....: OH-CUYA-00488217
+
+Irish Passport (dual citizen) ..: PA1234567
+Irish PPS Number ...............: 7654321F
+
+UK National Insurance Number ...: JW 12 34 56 D
+Australian Tax File Number .....: 876 543 219
+Canadian SIN ...................: 046 454 286   (test SIN, valid Luhn)
+Indian PAN .....................: ABCDE1234F
+Indian Aadhaar (test) ..........: 2345 6789 0123
+Brazilian CPF ..................: 123.456.789-09
+French INSEE (NIR) .............: 1 87 03 14 023 456 78
+German Steuer-ID ...............: 86 095 742 719
+Spanish DNI ....................: 12345678Z
+
+
+################################################################################
+# SECTION 3 — CONTACT & ADDRESSES
+################################################################################
+
+Primary residence:
+    4827 Birchwood Lane, Apt 12B
+    Cleveland, OH 44114
+    United States
+
+Mailing (PO Box):
+    PO Box 7821
+    Cleveland, OH 44101
+
+Previous address (2014-2019):
+    218 Elm Street
+    Lakewood, OH 44107
+
+Work address:
+    Acme Fictional Corp
+    1500 Innovation Parkway, Suite 400
+    Beachwood, OH 44122
+
+Phones:
+    Personal mobile  : +1 (216) 555-0142
+    Personal mobile  : 216.555.0142
+    Personal mobile  : 2165550142
+    Work direct      : +1 (216) 555-0931 ext. 4471
+    Home landline    : +1 (216) 555-0066
+    Spouse mobile    : +1 (216) 555-0188
+    UK mobile (intl) : +44 7700 900482
+    DE mobile (intl) : +49 1512 5550199
+
+Emails:
+    Personal  : jon.whitfield87@examplemail.com
+    Personal  : jmw.cleveland@protonmail.test
+    Work      : j.whitfield@acme-fictional-corp.com
+    Work alt  : jonathan.whitfield@acme-fictional-corp.com
+    Backup    : jmw_backup+filter@fakedomain.test
+    Recovery  : recovery.jmw@duck.test
+
+Emergency contact: Eleanor Whitfield, +1 (216) 555-0188, eleanor.w@examplemail.com
+
+
+################################################################################
+# SECTION 4 — FINANCIAL
+################################################################################
+
+# --- Banking (US) ---
+Bank ............. : First Meridian Bank, N.A. (fictional)
+Branch ........... : Cleveland Downtown
+Account holder ... : Jonathan M. Whitfield
+Checking acct # .. : 000847562193
+Savings acct # ... : 000847562207
+ABA routing ...... : 021000089
+SWIFT/BIC ........ : FMRDUS33XXX
+
+# --- Banking (UK / EU) ---
+Bank ............. : Barclays UK (fictional record)
+Sort code ........ : 20-00-00
+Account .......... : 55779911
+IBAN (GB) ........ : GB29 NWBK 6016 1331 9268 19
+IBAN (DE) ........ : DE89 3704 0044 0532 0130 00
+IBAN (FR) ........ : FR14 2004 1010 0505 0001 3M02 606
+SWIFT/BIC ........ : NWBKGB2L
+
+# --- Cards (all are valid Luhn test PANs from card-network docs) ---
+Visa (debit) ..... : 4539 1488 0343 6467   exp 09/29   CVV 412
+Visa (credit) .... : 4111 1111 1111 1111   exp 12/30   CVV 737
+Mastercard ....... : 5425 2334 3010 9903   exp 04/28   CVV 901
+Amex ............. : 3782 822463 10005     exp 07/29   CID 1234
+Discover ......... : 6011 0009 9013 9424   exp 02/29   CVV 555
+Diners Club ...... : 3056 9309 0259 04     exp 11/28   CVV 318
+JCB .............. : 3530 1113 3330 0000   exp 06/29   CVV 220
+
+# --- Digital wallets ---
+PayPal email ..... : jon.pay@examplemail.com
+Venmo handle ..... : @jon-whitfield-87
+CashApp .......... : $jonwhit
+Zelle (phone) .... : +1 (216) 555-0142
+Apple Pay device : iPhone 15 Pro (DPAN ****-****-****-1188)
+
+# --- Crypto wallets (testnet/example addresses) ---
+BTC (legacy) ..... : 1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2
+BTC (segwit) ..... : bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh
+ETH .............. : 0x742d35Cc6634C0532925a3b844Bc9e7595f8fA8e
+ETH ENS .......... : jonwhit.eth
+Solana ........... : 7EYnhQoR9YM3N7UoaKRoA44Uy8JeaZV3qyouov87awMs
+Tron ............. : TQrZ9wBfGzfaWzEfRJ7ZcF7qCUq7hFqKQH
+BTC seed (12-word; FAKE — for detector training only):
+    abandon ability able about above absent absorb abstract absurd abuse access accident
+ETH private key (FAKE 64-hex; do not use):
+    0x4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f362318
+
+# --- Tax & investment ---
+IRS EIN (employer) ..... : 12-3456789
+IRS ITIN (test) ........ : 900-70-1234
+Brokerage acct (Fidelity): Z00-484472
+401(k) plan number ..... : PLN-887423-A
+HSA acct ............... : HSA-44872019
+
+
+################################################################################
+# SECTION 5 — HEALTHCARE
+################################################################################
+
+Primary insurance ........ : BlueRidge Health PPO (fictional)
+Member ID ................ : BRH-558-2247901
+Group number ............. : 88421-A
+Plan effective date ...... : 2022-01-01
+Pharmacy BIN/PCN ......... : 610014 / 9999
+Medicare HICN (legacy) ... : 412-55-7839A   (note: same digits as SSN — common pattern)
+Medicare MBI ............. : 1EG4-TE5-MK73
+
+Primary care physician ... : Dr. Priya Anand, MD (NPI 1234567893)
+Cardiologist ............. : Dr. Wen Liu, MD (NPI 1881234567)
+Dentist .................. : Dr. Aaron Bekele, DDS
+
+Conditions ............... : Hypertension (controlled, since 2019); seasonal allergies
+Medications .............. : Lisinopril 10mg daily; loratadine 10mg PRN
+Allergies ................ : Penicillin (anaphylaxis), shellfish (mild)
+Blood type ............... : O+
+Vaccinations ............. : COVID-19 (current), Tdap 2022, MMR up to date
+
+Mental health ............ : Therapy with Dr. Mara Goldstein, LCSW; weekly since 2023.
+                              Diagnosed: generalized anxiety disorder (F41.1).
+                              **HIGHLY SENSITIVE — should be flagged.**
+
+Medical record number .... : MRN-CLE-00772341 (Cleveland Clinic, fictional)
+
+
+################################################################################
+# SECTION 6 — EMPLOYMENT
+################################################################################
+
+Employer ............ : Acme Fictional Corp
+Employer EIN ........ : 12-3456789
+Employee ID ......... : EMP-00472
+Job title ........... : Senior Backend Engineer, Platform Team
+Manager ............. : Sarah Lindgren (sarah.lindgren@acme-fictional-corp.com)
+Skip-level .......... : VP Eng, Marcus Tan (m.tan@acme-fictional-corp.com)
+Office .............. : Beachwood HQ, desk B-417
+Start date .......... : 2019-07-15
+Salary .............. : $148,500 base + 12% target bonus
+Stock grant ......... : 4,800 RSUs (vesting 2023-2027), grant ID RSU-2023-00188
+Direct deposit ...... : First Meridian, acct 000847562193, ABA 021000089
+
+Background check (2019):
+    Vendor: Sterling
+    Reference number: STR-CHK-21881734
+    Result: Clear
+    SSN trace, county criminal (Cuyahoga, OH), education verification (Case Western
+    Reserve, BS Computer Science 2009), employment verification (3 prior employers).
+
+
+################################################################################
+# SECTION 7 — ONLINE ACCOUNTS / HANDLES
+################################################################################
+
+GitHub ........... : github.com/jwhitfield-dev    (UID 18847221)
+GitLab ........... : gitlab.com/jwhit             (UID 9923014)
+LinkedIn ......... : linkedin.com/in/jonathan-whitfield-fake
+Twitter / X ...... : @jon_w_codes                 (numeric ID 1487229934471122944)
+Mastodon ......... : @jwhit@hachyderm.io
+Bluesky .......... : @jwhit.bsky.social
+Reddit ........... : u/jwhit_dev
+Hacker News ...... : jwhit87
+Stack Overflow ... : users/4471882/jwhit
+Discord .......... : jwhit#4471                   (snowflake ID 188472291203112448)
+Slack ............ : U07ABCDEF12 (Acme workspace)
+Steam ID ......... : 76561198044721883
+Xbox gamertag .... : JWhitOH216
+PSN .............. : jwhit-cleveland
+Battle.net ....... : JWhit#11842
+
+Apple ID ......... : jon.whitfield87@examplemail.com   (DSID 0001234567890)
+Google account ... : jon.whitfield.dev@gmail.com       (sub: 109876543210987654321)
+Microsoft acct ... : jonathan.whitfield@outlook.test
+Dropbox UID ...... : dbid:AAAA-1234567890abcdef
+1Password vault .. : jw-personal
+
+
+################################################################################
+# SECTION 8 — PASSWORDS & PASSPHRASES (FAKE)
+################################################################################
+
+# Reused-password problem (intentional — detectors should flag pattern)
+Personal email password : Birchwood4827!Hunter
+Banking password ........ : Birchwood4827!Vault
+Work SSO password ....... : Birchwood4827!Corp
+Old password (rotated) .. : Birchwood4827!2023
+
+Password manager master . : correct-horse-battery-stapler-9!Cleveland
+PIN (debit, 4-digit) .... : 4827
+PIN (phone unlock, 6) ... : 081422
+PIN (SIM) ............... : 1144
+Recovery codes (Google):
+    7f3b-2k91-aa48
+    qq91-zz02-mm38
+    pl04-rr82-nn19
+    cd72-tt55-bb40
+    xy18-ww33-vv27
+
+Wifi:
+    SSID     : Whitfield_Home_5G
+    Password : Birchwood4827!
+    BSSID    : 00:1A:2B:3C:4D:5E
+    Guest SSID / pwd: Whitfield_Guest / guest-1234
+
+Security questions (often as bad as passwords):
+    Q: First pet's name?            A: Biscuit
+    Q: City you were born in?       A: Cleveland
+    Q: High school mascot?          A: Spartans
+    Q: Mother's maiden name?        A: Castellanos
+
+
+################################################################################
+# SECTION 9 — API KEYS, TOKENS, SECRETS  (ALL FAKE — formatted to match real
+# provider patterns so prefix/regex/checksum detectors will trigger)
+################################################################################
+
+# ---------- Cloud providers ----------
+
+AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE
+AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+AWS_SESSION_TOKEN=FQoGZXIvYXdzEKf//////////wEaDPLACEHOLDER1234567890abcdefgEXAMPLE==
+AWS_ROOT_KEY_ID=AKIAEXAMPLEROOTKEY01
+
+GCP_API_KEY=AIzaSyD-FAKE_EXAMPLE_KEY_abcdef1234567890XYZ
+GCP_OAUTH_CLIENT_ID=123456789012-abcdefghijklmnopqrstuvwxyzabcdef.apps.googleusercontent.com
+GCP_OAUTH_CLIENT_SECRET=GOCSPX-abcdefghijklmnopqrstuvwxyz12
+
+# Service account JSON (fake)
+{
+  "type": "service_account",
+  "project_id": "acme-fictional-prod",
+  "private_key_id": "abc123def456fake7890abcdef1234567890fake",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvFAKEKEYDATA...\n-----END PRIVATE KEY-----\n",
+  "client_email": "ci-bot@acme-fictional-prod.iam.gserviceaccount.com",
+  "client_id": "109876543210987654321"
+}
+
+AZURE_CLIENT_ID=11111111-2222-3333-4444-555566667777
+AZURE_TENANT_ID=88888888-9999-aaaa-bbbb-ccccddddeeee
+AZURE_CLIENT_SECRET=FAKE~aBc1.dEf2~gHi3.jKl4_MnO5pQr6sTu7VwX8yZ
+AZURE_STORAGE_CONN=DefaultEndpointsProtocol=https;AccountName=acmestorage;AccountKey=FAKEbase64keyFAKEbase64keyFAKEbase64keyFAKEbase64keyFAKEbase64keyFAKEbase64keyFAKEbase64keyFAKEbase64keyEND==;EndpointSuffix=core.windows.net
+
+DIGITALOCEAN_TOKEN=dop_v1_FAKE0123456789abcdef0123456789abcdef0123456789abcdef0123456789ab
+DIGITALOCEAN_SPACES_KEY=DO00FAKEACCESSKEYID01
+DIGITALOCEAN_SPACES_SECRET=FAKEdoSpacesSecretKey1234567890abcdefghijklmnopq
+
+# ---------- Source control / CI ----------
+
+GITHUB_PAT_CLASSIC=ghp_FAKE1a2b3c4d5e6f7g8h9i0jKLMNOPQRSTUV12
+GITHUB_PAT_FINEGRAINED=github_pat_11AAAAAAA0FAKE1a2b3c4d5e6f7g_FAKE1a2b3c4d5e6f7g8h9i0jKLMNOPQRSTUV12abcdefghij
+GITHUB_OAUTH=gho_FAKE1a2b3c4d5e6f7g8h9i0jKLMNOPQRSTUV12
+GITHUB_USER_TO_SERVER=ghu_FAKE1a2b3c4d5e6f7g8h9i0jKLMNOPQRSTUV12
+GITHUB_SERVER_TO_SERVER=ghs_FAKE1a2b3c4d5e6f7g8h9i0jKLMNOPQRSTUV12
+GITHUB_REFRESH=ghr_FAKE1a2b3c4d5e6f7g8h9i0jKLMNOPQRSTUV12
+
+GITLAB_PAT=glpat-FAKE1a2b3c4d5e6f7g8h
+GITLAB_PIPELINE_TRIGGER=glptt-FAKE0123456789abcdef0123
+GITLAB_RUNNER=GR1348941FAKEabcdef0123456789ab
+
+BITBUCKET_APP_PASSWORD=ATBBFAKE0123456789abcdefghij0123456789AB
+BITBUCKET_OAUTH_KEY=FAKEbbConsumerKey01
+
+CIRCLECI_TOKEN=CCIPRJ_FAKE1a2b3c4d5e6f7g8h9i0jKLMN_FAKE1a2b3c4d5e6f
+TRAVIS_TOKEN=FAKEtravisToken1234567890abcdef
+JENKINS_API_TOKEN=11FAKEjenkinsApiToken1234567890abcdef0123
+
+NPM_TOKEN=npm_FAKE1a2b3c4d5e6f7g8h9i0jKLMNOPQRSTUV
+PYPI_TOKEN=pypi-AgEIcHlwaS5vcmcCJDFAKETOKEN0123456789abcdef0123456789abcdef0123456789abcdef
+RUBYGEMS_KEY=rubygems_FAKE0123456789abcdef0123456789abcdef0123456789abcdef0123456789
+
+# ---------- Payments ----------
+
+STRIPE_LIVE_SECRET=sk_live_51FAKE3HqLm8aB3cD4eF5gH6iJ7kL8mN9oP0qR1sT2uV3wX4yZ5aB6cD7eF8gH9iJ0kL1mN
+STRIPE_TEST_SECRET=sk_test_51FAKE3HqLm8aB3cD4eF5gH6iJ7kL8mN9oP0qR1sT2uV3wX4yZ5aB6cD7eF8gH9iJ0kL1mN
+STRIPE_LIVE_PUBLISHABLE=pk_live_51FAKE3HqLm8aB3cD4eF5gH6iJ7kL8mN9oP0qR1sT2uV3wX4yZ5aB6cD7eF8
+STRIPE_RESTRICTED=rk_live_51FAKE3HqLm8aB3cD4eF5gH6iJ7kL8mN9oP0qR1sT2uV3wX4yZ5aB6cD7eF8
+STRIPE_WEBHOOK_SECRET=whsec_FAKE1234567890abcdef1234567890abcdef1234567890abcdef1234567890ab
+
+PAYPAL_CLIENT_ID=AeFAKEclientId1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKL
+PAYPAL_CLIENT_SECRET=EFAKEclientSecret1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJ
+SQUARE_ACCESS_TOKEN=EAAAFAKEsquareAccessToken1234567890abcdef
+PLAID_CLIENT_ID=5fFAKEplaidClientId01
+PLAID_SECRET=fakePlaidSecret1234567890abcdef
+
+# ---------- Communications ----------
+
+TWILIO_ACCOUNT_SID=ACFAKEa1b2c3d4e5f6g7h8i9j0k1l2m3n4o5
+TWILIO_AUTH_TOKEN=FAKE0123456789abcdef0123456789ab
+TWILIO_API_KEY_SID=SKFAKEa1b2c3d4e5f6g7h8i9j0k1l2m3n4o5
+
+SENDGRID_API_KEY=SG.FAKEabc123def456ghi789jkl.012mno345pqr678stu901vwx234yz567abCDE890
+MAILGUN_API_KEY=key-FAKE0123456789abcdef0123456789abcd
+POSTMARK_TOKEN=FAKE0123-4567-89ab-cdef-0123456789ab
+MAILCHIMP_API_KEY=FAKE0123456789abcdef0123456789ab-us21
+
+SLACK_BOT_TOKEN=xoxb-FAKE-1234567890-1234567890123-aBcDeFgHiJkLmNoPqRsTuVwX
+SLACK_USER_TOKEN=xoxp-FAKE-1234567890-1234567890123-1234567890123-aBcDeFgHiJkLmNoPqRsTuVwXyZ012345
+SLACK_WEBHOOK=https://hooks.slack.com/services/T00FAKE01/B00FAKE02/FAKE0123456789abcdef0123
+SLACK_SIGNING_SECRET=FAKE0123456789abcdef0123456789ab
+
+DISCORD_BOT_TOKEN=MTIFAKEdiscordToken.GhFAKE.kJ1lFAKEsegment9876543210abcdefghij
+DISCORD_WEBHOOK=https://discord.com/api/webhooks/1188472291203112448/FAKE_webhook_token_abcdefghij1234567890ABCDEFGHIJ_FAKE_token-segment
+
+TELEGRAM_BOT_TOKEN=1234567890:AAH-FAKEtelegramBotTokenAbcdef0123456789
+
+ZOOM_JWT=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.FAKE_zoom_jwt_payload.FAKE_signature_abcdef
+INTERCOM_ACCESS_TOKEN=dG9rOmFiY2RlZmFiY2RlZmFiY2RlZkZBS0VfaW50ZXJjb21fdG9rZW4=
+
+# ---------- AI providers ----------
+
+OPENAI_API_KEY=sk-proj-FAKEabcdef1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZ_FAKE
+OPENAI_LEGACY=sk-FAKEabcdef1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghij
+OPENAI_ORG_ID=org-FAKEorganizationIdAbcdef12
+
+ANTHROPIC_API_KEY=sk-ant-api03-FAKE_abcdefghijklmnopqrstuvwxyz0123456789-ABCDEFGHIJKLMNOPQRSTUVWXYZ-abcdefghijklmnopqrstuvwxyz0123-FAKEEnd
+
+HUGGINGFACE_TOKEN=hf_FAKEabcdefghijklmnopqrstuvwxyz0123456789AB
+COHERE_API_KEY=FAKEcohereApiKey1234567890abcdefghijklmnopqrstuv
+REPLICATE_API_TOKEN=r8_FAKE0123456789abcdef0123456789abcdef0123456789
+DEEPSEEK_API_KEY=sk-FAKEdeepseek0123456789abcdef0123456789abcdef
+WANDB_API_KEY=FAKEwandb0123456789abcdef0123456789abcdef0123
+
+# ---------- Databases & infra ----------
+
+DATABASE_URL=postgres://acme_app:S3cr3t-DB-P4ss!@db-prod-01.acme-fictional.internal:5432/acme_prod?sslmode=require
+MONGO_URI=mongodb+srv://acme_admin:M0ng0Pa55w0rd@cluster0-fake.mongodb.net/acme?retryWrites=true&w=majority
+REDIS_URL=redis://:R3disPa55!@cache-prod-01.acme-fictional.internal:6379/0
+RABBITMQ_URL=amqp://acme_mq:RabbitS3cret@mq-prod.acme-fictional.internal:5672/acme
+
+DATADOG_API_KEY=FAKE0123456789abcdef0123456789ab
+DATADOG_APP_KEY=FAKE0123456789abcdef0123456789abcdef0123
+NEW_RELIC_LICENSE=FAKE0123456789abcdef0123456789abcdef0123NRAL
+SENTRY_DSN=https://FAKE0123456789abcdef0123456789ab@o123456.ingest.sentry.io/7654321
+SENTRY_AUTH_TOKEN=sntrys_FAKEsentryAuthToken_eyJ1cmwiOiJodHRwczovL3NlbnRyeS5pbyJ9_FAKEsignaturePart
+PAGERDUTY_API_KEY=u+FAKE0123456789abcdef
+ROLLBAR_TOKEN=FAKE0123456789abcdef0123456789ab
+
+# ---------- SaaS / business ----------
+
+SALESFORCE_CONSUMER_KEY=3MVG9FAKEsfConsumerKey0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJ
+SALESFORCE_CONSUMER_SECRET=FAKE1234567890123456
+HUBSPOT_API_KEY=pat-na1-FAKE0123-4567-89ab-cdef-0123456789ab
+ZENDESK_API_TOKEN=FAKEzendeskApiToken1234567890abcdefghij
+ASANA_PAT=2/1188472291203112448/1234567890123456:FAKEasanaPatToken1234567890abcdef
+JIRA_API_TOKEN=ATATT3xFfGF0FAKEjiraApiTokenAbcdef0123456789AbCdEf0123456789AbCdEf01234
+
+# ---------- Misc ----------
+
+DOCKER_HUB_PAT=dckr_pat_FAKEdockerHubPat0123456789abcdefghij_F
+DOCKER_REGISTRY_AUTH=eyJodHRwczovL2luZGV4LmRvY2tlci5pby92MS8iOnsiYXV0aCI6IkZBS0VfYmFzZTY0X2RvY2tlcl9hdXRoIn19
+HEROKU_API_KEY=HRKU-FAKE0123-4567-89ab-cdef-0123456789ab
+NETLIFY_TOKEN=nfp_FAKE0123456789abcdef0123456789abcdef01234
+VERCEL_TOKEN=FAKE0123456789abcdef0123456789ab
+SUPABASE_SERVICE_ROLE=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZha2VyZWYiLCJyb2xlIjoic2VydmljZV9yb2xlIiwiaWF0IjoxNzQ1MDAwMDAwLCJleHAiOjIwNjA1NzYwMDB9.FAKE_supabase_signature_abcdef
+
+
+################################################################################
+# SECTION 10 — JWT / OAUTH SAMPLES
+################################################################################
+
+# Standard JWT (HS256, fake payload)
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvbiBXaGl0ZmllbGQiLCJlbWFpbCI6ImpvbkBhY21lLWZpY3Rpb25hbC1jb3JwLmNvbSIsImlhdCI6MTc0NTAwMDAwMCwiZXhwIjoxNzQ1MDg2NDAwfQ.FAKE_signature_abcdefghijklmnopqrstuvwxyz0123456789
+
+# OAuth2 refresh token (Google-ish)
+refresh_token=1//FAKErefreshToken_0123456789abcdefghijklmnopqrstuvwxyz-_ABCDEFGHIJ
+
+# Basic auth header (base64 of user:pass)
+Authorization: Basic am9uLndoaXRmaWVsZDpCaXJjaHdvb2Q0ODI3IQ==
+
+
+################################################################################
+# SECTION 11 — PRIVATE KEYS (FAKE BLOCKS, FORMAT-VALID)
+################################################################################
+
+-----BEGIN RSA PRIVATE KEY-----
+MIIEpAIBAAKCAQEA0FAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKE1234
+abcdEFGHijklMNOPqrstUVWXyz0123456789FAKEKEYDATAFORDETECTIONTESTING
+NotARealKey/JustForRegexAndPatternMatchingEnginesToFlagAsPrivateKey
+ThisBlockIsLongEnoughToTriggerLengthBasedHeuristicsAndPemDetectors
++AnotherLineOfFakeBase64PaddingAndSomeMoreCharactersToFillItOut//
+-----END RSA PRIVATE KEY-----
+
+-----BEGIN OPENSSH PRIVATE KEY-----
+b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZWQy
+NTUxOQAAACAxFAKEopensshKeyDataForDetectionTesting+abcdEFGHijklMN
+AAAAEHJvb3RAdGVzdG1hY2hpbmUBAg==
+-----END OPENSSH PRIVATE KEY-----
+
+-----BEGIN EC PRIVATE KEY-----
+MHcCAQEEIFAKEecPrivateKeyDataForDetectionTesting012345abcdefoAoGCCqGSM49
+AwEHoUQDQgAEFAKEpublicPortionFollowingEcPrivateKeyHeader+abcdefghijklmn
+opqrstuvwxyz012345678==
+-----END EC PRIVATE KEY-----
+
+-----BEGIN PGP PRIVATE KEY BLOCK-----
+lQOYBGFAKEpgpPrivateKeyDataForDetectionTesting0123456789abcdef
+mDMEYFAKEnotARealPgpKeyJustEnoughDataToTriggerScannerHeuristics
+=FAKE
+-----END PGP PRIVATE KEY BLOCK-----
+
+ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC0FAKEsshPublicKeyDataForDetectionTesting+abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOP/QRSTUVWXYZ== jon@laptop-2024
+
+
+################################################################################
+# SECTION 12 — DEVICE / NETWORK FINGERPRINTS
+################################################################################
+
+Laptop                  : MacBook Pro 16" 2023, serial C02ZK8FAKE01
+Laptop MAC (en0)        : 00:1A:2B:3C:4D:5E
+Laptop MAC (en1, wifi)  : 00:1A:2B:3C:4D:5F
+Phone                   : iPhone 15 Pro, IMEI 490154203237518
+Phone serial            : F2LFAKEserialnum
+Phone iCloud DSID       : 0001234567890
+Tablet (iPad)           : IMEI 359541080129841
+Smart TV                : MAC 18:B4:30:00:11:22
+
+Home IP (residential, IPv4)  : 192.0.2.47
+Office IP (egress, IPv4)     : 198.51.100.23
+VPN exit (IPv4)              : 203.0.113.88
+IPv6 (home)                  : 2001:db8:85a3::8a2e:370:7334
+IPv6 (work)                  : 2001:db8:abcd:0012::1
+
+Router admin URL  : http://192.168.1.1
+Router admin user : admin
+Router admin pwd  : Birchwood4827!router
+
+
+################################################################################
+# SECTION 13 — REALISTIC LEAK CONTEXTS
+# (the same secrets, but embedded as they'd actually leak in the wild)
+################################################################################
+
+# --- 13a: a .env file ---
+NODE_ENV=production
+PORT=8080
+DATABASE_URL=postgres://acme_app:S3cr3t-DB-P4ss!@db-prod-01.acme-fictional.internal:5432/acme_prod
+REDIS_URL=redis://:R3disPa55!@cache-prod-01.acme-fictional.internal:6379/0
+STRIPE_SECRET=sk_live_51FAKE3HqLm8aB3cD4eF5gH6iJ7kL8mN9oP0qR1sT2uV3wX4yZ5aB6cD7eF8gH9iJ0kL1mN
+SENDGRID_API_KEY=SG.FAKEabc123def456ghi789jkl.012mno345pqr678stu901vwx234yz567abCDE890
+JWT_SIGNING_SECRET=this-is-not-actually-a-secret-but-pretend-it-is-32chars
+
+# --- 13b: a Slack message ---
+[2026-04-12 10:14] @jon.whitfield: hey can you ssh into prod-web-04? creds are
+ubuntu / Pr0dW3b!2024 — also if you need the deploy key it's the one in 1Password
+under "acme-deploy", but here's the AWS key just in case: AKIAIOSFODNN7EXAMPLE /
+wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY. don't paste in #general lol
+
+# --- 13c: a support ticket pasted into a bug report ---
+Subject: Payment failing for user
+Body:
+    Customer Jon Whitfield (jon.whitfield87@examplemail.com, ph +1 216-555-0142)
+    reports card 4539 1488 0343 6467 (exp 09/29, CVV 412) declines on checkout.
+    SSN on file 412-55-7839, DOB 1987-03-14. Please investigate ticket #88412.
+
+# --- 13d: a curl command from shell history ---
+$ curl -H "Authorization: Bearer sk-proj-FAKEabcdef1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZ_FAKE" \
+       https://api.openai.com/v1/models
+
+# --- 13e: a Git commit message gone wrong ---
+commit 1a2b3c4d5e6f7g8h9i0j
+Author: Jon Whitfield <j.whitfield@acme-fictional-corp.com>
+Date:   Wed Apr 8 14:22:11 2026 -0400
+
+    fix prod auth (revert pls)
+
+    temp hardcoding GITHUB_TOKEN=ghp_FAKE1a2b3c4d5e6f7g8h9i0jKLMNOPQRSTUV12
+    will move to vault tomorrow promise
+
+# --- 13f: an internal Confluence runbook ---
+## Production database access
+1. Connect to bastion: ssh -i ~/.ssh/acme_prod jon@bastion.acme-fictional.internal
+2. From bastion: psql "postgres://readonly:R34d0nlyP4ss@db-prod-01.acme-fictional.internal:5432/acme_prod"
+3. Break-glass admin user: admin / FullAccess!2024Q2 (rotate quarterly — see calendar)
+4. Datadog dashboard: https://app.datadoghq.com/dashboard/abc-def-ghi
+5. PagerDuty on-call: Jon Whitfield (primary), Sarah Lindgren (secondary)
+
+
+################################################################################
+# SECTION 14 — INTENTIONAL FALSE-POSITIVE TRAPS
+# (good detectors should NOT flag these; useful for tuning)
+################################################################################
+
+Order number (16 digits, NOT a card)   : 4929300012348877    # fails Luhn
+Tracking number                         : 1Z999AA10123456784
+UUID v4 (not a secret)                  : 550e8400-e29b-41d4-a716-446655440000
+SHA-256 hash of a public string         : e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+git commit SHA                          : 1a2b3c4d5e6f7g8h9i0j1a2b3c4d5e6f7g8h9i0j
+SemVer-ish string                       : sk_live_v1.4.7-preview   # NOT a Stripe key (wrong shape)
+"AKIA"-prefixed log line (not a key)    : "AKIAI did not match the expected pattern, retrying"
+Phone-shaped product code               : 2165550100   (test prefix; 555 numbers reserved)
+SSN-shaped invoice number               : 412-55-7839   # actually invoice id INV-412-55-7839 elsewhere
+Documentation example IBAN              : GB82 WEST 1234 5698 7654 32
+Test card from spec (no risk)           : 4242 4242 4242 4242
+Public Wikipedia coordinates of Cleveland: 41.4993° N, 81.6944° W
+RFC 5737 documentation IPs              : 192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24
+
+
+================================================================================
+END OF TEST CORPUS
+================================================================================
+This file contains roughly 200+ distinct artifacts spread across 14 sections,
+covering identity, government IDs (US + 8 other countries), contact info,
+financial accounts, healthcare, employment, online handles, passwords,
+~70 distinct API key/token formats from current providers, JWT/OAuth blobs,
+4 private-key formats, device/network fingerprints, realistic in-context
+leak scenarios (.env, Slack, support tickets, git commits, runbooks), and
+a section of false-positive traps for tuning precision.
+
+All values are fabricated. Any resemblance to real persons, accounts, or
+credentials is coincidental.
+================================================================================

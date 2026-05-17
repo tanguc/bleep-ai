@@ -15,6 +15,9 @@
       <a href="#rules" data-route="rules">
         <span class="dot"></span>Rules
       </a>
+      <a href="#perf" data-route="perf">
+        <span class="dot"></span>Perf
+      </a>
       <a href="#settings" data-route="settings">
         <span class="dot"></span>Settings
       </a>
@@ -72,6 +75,23 @@
 
     <section class="panel live">
       <h2>Live tail <span class="dim" id="tail-counter"></span></h2>
+      <div class="tail-filters">
+        <input
+          type="search"
+          id="tail-search"
+          class="tail-search"
+          placeholder="search rule_id, fake, original, uri…"
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <div class="tail-chips" id="tail-chips" role="group" aria-label="filter by category">
+          <button type="button" class="chip active" data-cat="all">all</button>
+          <button type="button" class="chip cat-pii" data-cat="pii">pii</button>
+          <button type="button" class="chip cat-secret" data-cat="secret">secret</button>
+          <button type="button" class="chip cat-infra" data-cat="infra">infra</button>
+        </div>
+        <span class="dim tail-match-count" id="tail-match-count"></span>
+      </div>
       <div id="tail" class="tail">
         <div class="empty">waiting for the next redaction…</div>
       </div>
@@ -90,6 +110,87 @@
     </section>
   </template>
 
+  <template id="route-drilldown">
+    <header class="dd-header">
+      <div>
+        <h1 id="dd-title">Redactions</h1>
+        <div class="dim" id="dd-subtitle">historical drill-down</div>
+      </div>
+      <button type="button" id="dd-back" class="chip dd-back" title="back to dashboard">← back</button>
+    </header>
+    <section class="panel">
+      <div class="tail-filters">
+        <input type="search" id="dd-search" class="tail-search"
+               placeholder="search original / fake / rule_id…"
+               autocomplete="off" spellcheck="false" />
+        <span class="dim tail-match-count" id="dd-count"></span>
+      </div>
+      <div class="redacted-table-wrap" id="dd-wrap">
+        <table class="redacted-table dd-table">
+          <thead>
+            <tr class="dd-headrow">
+              <th class="dd-col-time">Time</th>
+              <th class="dd-col-cat">Category</th>
+              <th class="dd-col-rule">Rule</th>
+              <th class="dd-col-sub">Subcategory</th>
+              <th class="dd-col-orig">Original</th>
+              <th class="dd-col-fake">Fake</th>
+            </tr>
+            <tr class="dd-filterrow">
+              <th><input type="search" data-col="time" class="dd-colfilter" placeholder="filter…" autocomplete="off" spellcheck="false" /></th>
+              <th><input type="search" data-col="category" class="dd-colfilter" placeholder="filter…" autocomplete="off" spellcheck="false" /></th>
+              <th><input type="search" data-col="rule" class="dd-colfilter" placeholder="filter…" autocomplete="off" spellcheck="false" /></th>
+              <th><input type="search" data-col="subcategory" class="dd-colfilter" placeholder="filter…" autocomplete="off" spellcheck="false" /></th>
+              <th><input type="search" data-col="original" class="dd-colfilter" placeholder="filter…" autocomplete="off" spellcheck="false" /></th>
+              <th><input type="search" data-col="fake" class="dd-colfilter" placeholder="filter…" autocomplete="off" spellcheck="false" /></th>
+            </tr>
+          </thead>
+          <tbody id="dd-body"></tbody>
+        </table>
+        <div id="dd-sentinel" class="dim" style="padding:8px; text-align:center;">loading…</div>
+      </div>
+    </section>
+  </template>
+
+  <template id="route-perf">
+    <header class="dd-header">
+      <div>
+        <h1>Perf</h1>
+        <div class="dim" id="perf-subtitle">gateway hot-path span timings · auto-refresh 1s</div>
+      </div>
+      <div class="perf-actions">
+        <label class="chip perf-toggle" title="pause auto-refresh">
+          <input type="checkbox" id="perf-pause" /> pause
+        </label>
+        <button type="button" id="perf-reset" class="chip" title="zero counters on the gateway">reset</button>
+      </div>
+    </header>
+    <section class="panel">
+      <div class="tail-filters">
+        <input type="search" id="perf-search" class="tail-search"
+               placeholder="filter span name (regex ok)…"
+               autocomplete="off" spellcheck="false" />
+        <span class="dim tail-match-count" id="perf-count"></span>
+      </div>
+      <div class="redacted-table-wrap">
+        <table class="redacted-table perf-table">
+          <thead>
+            <tr>
+              <th class="perf-col-name" data-sort="name">Span</th>
+              <th class="perf-col-num" data-sort="count">Count</th>
+              <th class="perf-col-num" data-sort="avg_ms">Avg ms</th>
+              <th class="perf-col-num" data-sort="min_ms">Min ms</th>
+              <th class="perf-col-num" data-sort="max_ms">Max ms</th>
+              <th class="perf-col-num" data-sort="total_ms">Total ms</th>
+              <th class="perf-col-bar">Share</th>
+            </tr>
+          </thead>
+          <tbody id="perf-body"></tbody>
+        </table>
+      </div>
+    </section>
+  </template>
+
   <template id="route-settings">
     <header>
       <h1>Settings</h1>
@@ -102,6 +203,15 @@
         <div>Events endpoint</div><div id="s-events-port" class="mono">—</div>
         <div>Status</div><div id="s-status">—</div>
       </div>
+    </section>
+    <section class="panel">
+      <h2>Database</h2>
+      <div class="dim settings-hint">destructive — clears local state only, no network calls</div>
+      <div class="settings-actions">
+        <button type="button" id="s-reset-stats" class="chip danger">Reset redaction history</button>
+        <button type="button" id="s-reset-perf" class="chip danger">Reset perf counters</button>
+      </div>
+      <div id="s-reset-status" class="dim small settings-status"></div>
     </section>
     <section class="panel">
       <h2>About</h2>

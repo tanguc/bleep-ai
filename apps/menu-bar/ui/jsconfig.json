@@ -12,5 +12,5 @@
       "@bleep-events/*": ["../../../crates/bleep-events/bindings/*"]
     }
   },
-  "include": ["./**/*.js"]
+  "include": ["./**/*.js", "./**/*.d.ts"]
 }

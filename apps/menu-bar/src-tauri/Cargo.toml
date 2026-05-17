@@ -17,6 +17,9 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "proce
 # Shared wire-event types — same definitions the gateway and TUI use.
 bleep-events = { path = "../../../crates/bleep-events" }
 
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 [profile.release]
 codegen-units = 1
 lto = true

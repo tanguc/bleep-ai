@@ -1,14 +1,15 @@
 // url-encoded handler — decode values, scan, replace, re-encode
 // implements INV-02 via architecture: scan once on decoded values, apply once
 
-use bytes::Bytes;
-use crate::replacement::Redaction;
 use super::RouterError;
+use crate::replacement::Redaction;
+use bytes::Bytes;
 
 /// handle application/x-www-form-urlencoded body
 ///
 /// decodes each form value, scans for secrets, replaces, and re-encodes.
 /// preserves all keys unchanged; only values are scanned.
+#[allow(clippy::unnecessary_wraps, clippy::needless_pass_by_value)]
 pub fn handle(body: Bytes) -> Result<(Bytes, Vec<Redaction>), RouterError> {
     // parse key=value pairs from percent-encoded body
     let pairs: Vec<(String, String)> = url::form_urlencoded::parse(body.as_ref())

@@ -29,6 +29,7 @@ pub struct RunResult {
     pub spdb_rules: usize,
     pub np_rules: usize,
     pub ha_rules: usize,
+    pub custom_rules: usize,
     pub total_rules: usize,
     pub combined_path: String,
     pub fixtures_path: String,
@@ -1218,14 +1219,43 @@ pub fn run(opts: &RunOptions) -> RunResult {
     }
     log_progress!(quiet, "rule_pipeline: hand-authored parsed {} rules", ha_rules.len());
 
+    // ── step 5.5: parse project-local custom rules (optional) ─────────────────
+    // rules/custom.yaml is for additions we don't want to push upstream into
+    // gitleaks / nosey-parker / spdb. Missing-file is fine; malformed is fatal.
+    let mut custom_rules: Vec<NormalizedRule> = Vec::new();
+    let custom_path = "rules/custom.yaml";
+    match fs::read_to_string(custom_path) {
+        Ok(raw) => {
+            let cu_file: HandAuthoredFile = serde_yml::from_str(&raw).unwrap_or_else(|e| {
+                panic!("rule_pipeline: malformed {custom_path}: {e}")
+            });
+            custom_rules = cu_file.rules;
+            for rule in &mut custom_rules {
+                if !rule.id.starts_with("custom.") {
+                    rule.id = format!("custom.{}", rule.id);
+                }
+                if rule.source.is_empty() {
+                    rule.source = "custom".to_string();
+                }
+            }
+            log_progress!(quiet, "rule_pipeline: custom parsed {} rules", custom_rules.len());
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            log_progress!(quiet, "rule_pipeline: no {custom_path} (optional, skipping)");
+        }
+        Err(e) => panic!("rule_pipeline: cannot read {custom_path}: {e}"),
+    }
+
     // ── step 6: merge and deduplicate ─────────────────────────────────────────
-    // insert in reverse priority order: spdb first (lowest), then gl, then np, then ha (highest)
+    // insert in reverse priority order: spdb (lowest), then gl, np, ha, custom (highest).
+    // custom overrides any other source on id collision.
     let mut merged: HashMap<String, NormalizedRule> = HashMap::new();
     for rule in spdb_rules
         .iter()
         .chain(gl_rules.iter())
         .chain(np_rules.iter())
         .chain(ha_rules.iter())
+        .chain(custom_rules.iter())
     {
         merged.insert(rule.id.clone(), rule.clone());
     }
@@ -1365,6 +1395,7 @@ pub fn run(opts: &RunOptions) -> RunResult {
         spdb_rules: spdb_rules.len(),
         np_rules: np_rules.len(),
         ha_rules: ha_rules.len(),
+        custom_rules: custom_rules.len(),
         total_rules: final_rules.len(),
         combined_path: combined_path.to_string(),
         fixtures_path: "rules/patterns-test-fixtures.yaml".to_string(),

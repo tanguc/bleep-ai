@@ -125,6 +125,11 @@ pub fn json_replace(body: Bytes) -> (Bytes, Vec<Redaction>) {
 fn walk_json_value(value: &mut serde_json::Value, redactions: &mut Vec<Redaction>) {
     match value {
         serde_json::Value::String(s) => {
+            // skip embedded binary payloads (data URLs): scanning corrupts the base64
+            // and the host API rejects the resulting payload (e.g. Anthropic 400 "Could not process image")
+            if s.starts_with("data:") && s.contains(";base64,") {
+                return;
+            }
             let bytes = Bytes::copy_from_slice(s.as_bytes());
             // use scan_field: individual JSON string values are context-isolated, so the
             // combined pre-filter would reject them even when they contain secrets.
@@ -142,12 +147,39 @@ fn walk_json_value(value: &mut serde_json::Value, redactions: &mut Vec<Redaction
             }
         }
         serde_json::Value::Object(map) => {
+            // skip Anthropic image source blocks: {"type":"base64","media_type":"image/...","data":"..."}
+            // mutating the base64 `data` field produces an invalid image and the API returns 400.
+            if is_binary_source_block(map) {
+                return;
+            }
             for val in map.values_mut() {
                 walk_json_value(val, redactions);
             }
         }
         _ => {} // numbers, bools, null — not scanned
     }
+}
+
+fn is_binary_source_block(map: &serde_json::Map<String, serde_json::Value>) -> bool {
+    // Anthropic image/document/file source: { type: "base64", media_type: "...", data: "..." }
+    let is_base64_source = matches!(map.get("type"), Some(serde_json::Value::String(t)) if t == "base64")
+        && map.contains_key("data");
+    if is_base64_source {
+        return true;
+    }
+    // any object carrying a media_type with a string data field is treated as opaque binary
+    if let (Some(serde_json::Value::String(mt)), Some(serde_json::Value::String(_))) =
+        (map.get("media_type"), map.get("data"))
+    {
+        if mt.starts_with("image/")
+            || mt.starts_with("audio/")
+            || mt.starts_with("video/")
+            || mt == "application/pdf"
+        {
+            return true;
+        }
+    }
+    false
 }
 
 /// map ReplacementType enum variant to its string key used in the generate() dispatch
