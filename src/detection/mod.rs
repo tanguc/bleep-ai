@@ -16,8 +16,12 @@ use crate::types::rule::{ChecksumType, Confidence};
 /// - resolves overlapping spans (longer span wins)
 /// - returns matches sorted descending by span.start (for right-to-left replacement)
 pub fn scan(body: &[u8]) -> Vec<Match> {
+    let _g = crate::perf::span("detection.scan");
     // step a: combined pre-filter — fast reject if no keywords present
-    if !COMBINED.is_match(body) {
+    let t_pre = std::time::Instant::now();
+    let pre = COMBINED.is_match(body);
+    crate::perf::record("detection.combined_prefilter", t_pre.elapsed());
+    if !pre {
         return Vec::new();
     }
 
@@ -32,15 +36,18 @@ pub fn scan(body: &[u8]) -> Vec<Match> {
 ///
 /// still applies per-rule keyword checks, entropy, and checksum filters.
 pub fn scan_field(field: &[u8]) -> Vec<Match> {
+    let _g = crate::perf::span("detection.scan_field");
     scan_inner(field)
 }
 
 /// core matching logic shared by scan() and scan_field()
 fn scan_inner(body: &[u8]) -> Vec<Match> {
+    let _g = crate::perf::span("detection.scan_inner");
     let mut matches: Vec<Match> = Vec::new();
 
     // per-rule matching
     for (rule_arc, regex) in RULES.iter() {
+        let t_rule = std::time::Instant::now();
         // inner keyword pre-filter (per-rule keywords)
         if !rule_arc.keywords.is_empty()
             && !rule_arc
@@ -48,6 +55,12 @@ fn scan_inner(body: &[u8]) -> Vec<Match> {
                 .iter()
                 .any(|k| body.windows(k.len()).any(|w| w == k.as_bytes()))
         {
+            // record dyn so we see which rules short-circuit on keyword
+            // pre-filter (cheap = good).
+            crate::perf::record_dyn(
+                &format!("rule.kw_skip:{}", rule_arc.id),
+                t_rule.elapsed(),
+            );
             continue;
         }
 
@@ -77,8 +90,11 @@ fn scan_inner(body: &[u8]) -> Vec<Match> {
                 confidence_boost,
             });
         }
+        // per-rule total scan time (includes regex find_iter + filters)
+        crate::perf::record_dyn(&format!("rule.scan:{}", rule_arc.id), t_rule.elapsed());
     }
 
+    let t_resolve = std::time::Instant::now();
     // step c+d: overlap resolution
     // sort by span.start ascending, then span.len() descending (longer first within same start)
     matches.sort_by(|a, b| {
@@ -101,6 +117,7 @@ fn scan_inner(body: &[u8]) -> Vec<Match> {
 
     // step e: sort descending by span.start
     resolved.sort_by(|a, b| b.span.start.cmp(&a.span.start));
+    crate::perf::record("detection.overlap_resolve", t_resolve.elapsed());
 
     resolved
 }

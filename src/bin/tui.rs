@@ -193,7 +193,7 @@ impl App {
 }
 
 fn connect_to_bus() -> io::Result<TcpStream> {
-    let port_str = std::fs::read_to_string("/tmp/bleep-events.port")?;
+    let port_str = std::fs::read_to_string(bleep_gateway::devmode::events_port_file())?;
     let port: u16 = port_str
         .trim()
         .parse()

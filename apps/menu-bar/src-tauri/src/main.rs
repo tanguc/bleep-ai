@@ -51,6 +51,30 @@ const POLL_INTERVAL_SECS: u64 = 2;
 const MAIN_WINDOW: &str = "main";
 
 // ── port file discovery ───────────────────────────────────────────────────────
+//
+// Mirrors src/devmode.rs in the gateway crate. Kept in sync by hand because
+// the menu-bar app intentionally doesn't depend on the gateway crate (would
+// drag in the entire detection pipeline + rules). If you change paths in one
+// place, change them here too.
+
+fn is_dev() -> bool {
+    matches!(
+        std::env::var("BLEEP_DEV").as_deref(),
+        Ok("1") | Ok("true") | Ok("TRUE")
+    )
+}
+
+fn stats_port_file() -> &'static str {
+    if is_dev() { "/tmp/bleep-stats-dev.port" } else { "/tmp/bleep-stats.port" }
+}
+
+fn events_port_file() -> &'static str {
+    if is_dev() { "/tmp/bleep-events-dev.port" } else { "/tmp/bleep-events.port" }
+}
+
+fn stats_port_range() -> std::ops::RangeInclusive<u16> {
+    if is_dev() { 9490..=9499 } else { 9290..=9299 }
+}
 
 fn read_port_file(path: &str) -> Option<u16> {
     std::fs::read_to_string(path)
@@ -59,16 +83,37 @@ fn read_port_file(path: &str) -> Option<u16> {
 }
 
 fn read_proxy_stats_port() -> Option<u16> {
-    read_port_file("/tmp/bleep-stats.port")
+    read_port_file(stats_port_file())
 }
 
 fn read_proxy_events_port() -> Option<u16> {
-    read_port_file("/tmp/bleep-events.port")
+    read_port_file(events_port_file())
 }
 
 #[tauri::command]
-fn get_stats_port() -> Option<u16> {
-    read_proxy_stats_port()
+async fn get_stats_port() -> Option<u16> {
+    // 1) fast path — port file written by the running gateway
+    if let Some(port) = read_proxy_stats_port() {
+        return Some(port);
+    }
+    // 2) recovery path — file is gone but the gateway may still be alive.
+    //    Probe the well-known stats range; if anything responds, rewrite the
+    //    port file so future calls hit the fast path again. This is the bug
+    //    that surfaced when `task gateway:stop` rm'd /tmp/bleep-*.port out
+    //    from under a still-running gateway (Bleep.app showed "disconnected"
+    //    while the gateway was healthy).
+    for port in stats_port_range() {
+        if probe_health(port).await {
+            let path = stats_port_file();
+            if let Err(e) = std::fs::write(path, port.to_string()) {
+                eprintln!("[menu-bar] failed to rewrite {path}: {e}");
+            } else {
+                eprintln!("[menu-bar] recovered stats port {port} → {path}");
+            }
+            return Some(port);
+        }
+    }
+    None
 }
 
 // ── window management ─────────────────────────────────────────────────────────
@@ -385,9 +430,9 @@ async fn gateway_already_running() -> bool {
     // 2) fallback: the port file may have been removed out from under a still-
     //    running gateway (e.g. by an over-eager cleanup task). Probe the
     //    well-known default range directly so we don't spawn a duplicate
-    //    that will fail to bind :9190 and look like a "crash". Range mirrors
-    //    stats_server::bind_first_available (9290..=9299).
-    for port in 9290u16..=9299 {
+    //    that will fail to bind the proxy port and look like a "crash". Range
+    //    mirrors stats_server::bind_first_available — prod 9290..=9299, dev 9490..=9499.
+    for port in stats_port_range() {
         if probe_health(port).await {
             return true;
         }

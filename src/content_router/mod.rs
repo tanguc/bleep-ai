@@ -59,9 +59,11 @@ pub fn process_body(
     content_encoding: Option<&str>,
     body: Bytes,
 ) -> (Bytes, Vec<Redaction>) {
+    let _g = crate::perf::span("content_router.process_body");
     let encoding = content_encoding.unwrap_or("").to_ascii_lowercase();
 
     // step 1: decompress if needed (INV-06)
+    let t_dec = std::time::Instant::now();
     let (decompressed, was_compressed) = match decompress(&body, &encoding) {
         Ok(result) => result,
         Err(e) => {
@@ -69,10 +71,15 @@ pub fn process_body(
             return (body, vec![]);
         }
     };
+    if was_compressed {
+        crate::perf::record("content_router.decompress", t_dec.elapsed());
+    }
 
     // step 2: route to handler by content type
     let ct = content_type.unwrap_or("").to_ascii_lowercase();
+    let t_dispatch = std::time::Instant::now();
     let handler_result = dispatch(&ct, decompressed.clone());
+    crate::perf::record("content_router.dispatch", t_dispatch.elapsed());
 
     let (replaced, redactions) = match handler_result {
         Ok(pair) => pair,
@@ -84,8 +91,12 @@ pub fn process_body(
 
     // step 3: if body was compressed, recompress the replaced bytes
     if was_compressed {
+        let t_re = std::time::Instant::now();
         match recompress(&replaced, &encoding) {
-            Ok(recompressed) => (Bytes::from(recompressed), redactions),
+            Ok(recompressed) => {
+                crate::perf::record("content_router.recompress", t_re.elapsed());
+                (Bytes::from(recompressed), redactions)
+            }
             Err(e) => {
                 warn!(
                     "[bleep] recompression failed after replacement for {encoding}: {e}, forwarding decompressed body"

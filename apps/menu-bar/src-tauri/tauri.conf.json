@@ -5,7 +5,7 @@
   "identifier": "ai.bleep.menubar",
   "build": {
     "frontendDist": "../ui",
-    "devUrl": null
+    "devUrl": "http://localhost:1420"
   },
   "app": {
     "windows": [],

@@ -1,0 +1,609 @@
+# Custom (project-local) rules — augment vendored gitleaks/nosey-parker/spdb.
+# Read by `cargo run --bin build-rules` (rule_pipeline.rs) and merged into
+# rules/combined.yaml. IDs are auto-prefixed with `custom.` so they can't
+# collide with upstream-derived rules.
+#
+# Schema: same as rules/vendor/hand-authored/patterns.yaml (see
+# docs/schema/INTERNAL-SCHEMA.md). Required fields:
+#   id, name, category (secret|pii|infra), subcategory, confidence,
+#   regex, replacement_type, severity.
+# Valid replacement_types: faker_email, faker_phone, faker_ssn, faker_cc_luhn,
+#   faker_iban, faker_uuid, faker_ipv4, faker_aws_key, faker_github_pat,
+#   faker_jwt, faker_api_key, faker_db_conn, faker_url_cred, fpe_numeric,
+#   generic_random, passthrough.
+
+rules:
+  # ──────────────────────────────────────────────────────────────────────
+  # AI providers
+  # ──────────────────────────────────────────────────────────────────────
+
+  - id: secret.anthropic-api-key
+    name: Anthropic API Key
+    category: secret
+    subcategory: anthropic
+    source: custom
+    confidence: high
+    regex: '\bsk-ant-api03-[A-Za-z0-9_\-]{80,200}\b'
+    keywords: ["anthropic", "sk-ant"]
+    entropy: null
+    tags: ["custom"]
+    checksum_type: null
+    replacement_type: faker_api_key
+    description: "Anthropic API key (sk-ant-api03-… variable length)"
+    severity: high
+
+  - id: secret.openai-proj-key
+    name: OpenAI Project API Key
+    category: secret
+    subcategory: openai
+    source: custom
+    confidence: high
+    regex: '\bsk-proj-[A-Za-z0-9_\-]{40,300}\b'
+    keywords: ["openai", "sk-proj"]
+    entropy: null
+    tags: ["custom"]
+    checksum_type: null
+    replacement_type: faker_api_key
+    description: "OpenAI project-scoped API key (sk-proj-…)"
+    severity: high
+
+  - id: secret.openai-legacy-key
+    name: OpenAI Legacy API Key
+    category: secret
+    subcategory: openai
+    source: custom
+    confidence: high
+    regex: '\bsk-[A-Za-z0-9]{32,}\b'
+    keywords: ["openai", "sk-"]
+    entropy: null
+    tags: ["custom"]
+    checksum_type: null
+    replacement_type: faker_api_key
+    description: "OpenAI legacy secret key (sk-… 32+ alnum)"
+    severity: high
+
+  - id: secret.huggingface-token
+    name: HuggingFace Access Token
+    category: secret
+    subcategory: huggingface
+    source: custom
+    confidence: high
+    regex: '\bhf_[A-Za-z0-9]{30,}\b'
+    keywords: ["huggingface", "hf_"]
+    entropy: null
+    tags: ["custom"]
+    checksum_type: null
+    replacement_type: faker_api_key
+    description: "HuggingFace user access token"
+    severity: high
+
+  - id: secret.replicate-token
+    name: Replicate API Token
+    category: secret
+    subcategory: replicate
+    source: custom
+    confidence: high
+    regex: '\br8_[A-Za-z0-9]{30,}\b'
+    keywords: ["replicate", "r8_"]
+    entropy: null
+    tags: ["custom"]
+    checksum_type: null
+    replacement_type: faker_api_key
+    description: "Replicate.com API token"
+    severity: high
+
+  # ──────────────────────────────────────────────────────────────────────
+  # GitHub — full set of token prefixes (gho/ghu/ghs/ghr + fine-grained)
+  # ──────────────────────────────────────────────────────────────────────
+
+  - id: secret.github-oauth
+    name: GitHub OAuth Token (gho_)
+    category: secret
+    subcategory: github
+    source: custom
+    confidence: high
+    regex: '\bgho_[A-Za-z0-9_]{30,}\b'
+    keywords: ["github", "gho_"]
+    entropy: null
+    tags: ["custom"]
+    checksum_type: null
+    replacement_type: faker_github_pat
+    description: "GitHub OAuth access token"
+    severity: high
+
+  - id: secret.github-user-server
+    name: GitHub User-to-Server Token (ghu_)
+    category: secret
+    subcategory: github
+    source: custom
+    confidence: high
+    regex: '\bghu_[A-Za-z0-9_]{30,}\b'
+    keywords: ["github", "ghu_"]
+    entropy: null
+    tags: ["custom"]
+    checksum_type: null
+    replacement_type: faker_github_pat
+    description: "GitHub user-to-server token"
+    severity: high
+
+  - id: secret.github-server-server
+    name: GitHub Server-to-Server Token (ghs_)
+    category: secret
+    subcategory: github
+    source: custom
+    confidence: high
+    regex: '\bghs_[A-Za-z0-9_]{30,}\b'
+    keywords: ["github", "ghs_"]
+    entropy: null
+    tags: ["custom"]
+    checksum_type: null
+    replacement_type: faker_github_pat
+    description: "GitHub server-to-server token"
+    severity: high
+
+  - id: secret.github-refresh
+    name: GitHub Refresh Token (ghr_)
+    category: secret
+    subcategory: github
+    source: custom
+    confidence: high
+    regex: '\bghr_[A-Za-z0-9_]{30,}\b'
+    keywords: ["github", "ghr_"]
+    entropy: null
+    tags: ["custom"]
+    checksum_type: null
+    replacement_type: faker_github_pat
+    description: "GitHub refresh token"
+    severity: high
+
+  - id: secret.github-classic-pat
+    name: GitHub Classic PAT (ghp_)
+    category: secret
+    subcategory: github
+    source: custom
+    confidence: high
+    regex: '\bghp_[A-Za-z0-9_]{30,}\b'
+    keywords: ["github", "ghp_"]
+    entropy: null
+    tags: ["custom"]
+    checksum_type: null
+    replacement_type: faker_github_pat
+    description: "GitHub classic PAT (looser length than vendored np.github.1)"
+    severity: high
+
+  - id: secret.github-pat-finegrained
+    name: GitHub Fine-Grained PAT
+    category: secret
+    subcategory: github
+    source: custom
+    confidence: high
+    regex: '\bgithub_pat_[A-Za-z0-9_]{60,}\b'
+    keywords: ["github_pat", "github"]
+    entropy: null
+    tags: ["custom"]
+    checksum_type: null
+    replacement_type: faker_github_pat
+    description: "GitHub fine-grained PAT (github_pat_…)"
+    severity: high
+
+  # ──────────────────────────────────────────────────────────────────────
+  # Stripe — all prefixes
+  # ──────────────────────────────────────────────────────────────────────
+
+  - id: secret.stripe-test-secret
+    name: Stripe Test Secret Key
+    category: secret
+    subcategory: stripe
+    source: custom
+    confidence: high
+    regex: '\bsk_test_[A-Za-z0-9]{24,}\b'
+    keywords: ["stripe", "sk_test"]
+    entropy: null
+    tags: ["custom"]
+    checksum_type: null
+    replacement_type: faker_api_key
+    description: "Stripe test mode secret key"
+    severity: high
+
+  - id: secret.stripe-restricted
+    name: Stripe Restricted Key
+    category: secret
+    subcategory: stripe
+    source: custom
+    confidence: high
+    regex: '\brk_(?:live|test)_[A-Za-z0-9]{24,}\b'
+    keywords: ["stripe", "rk_"]
+    entropy: null
+    tags: ["custom"]
+    checksum_type: null
+    replacement_type: faker_api_key
+    description: "Stripe restricted key (rk_live_/rk_test_)"
+    severity: high
+
+  - id: secret.stripe-publishable
+    name: Stripe Publishable Key
+    category: secret
+    subcategory: stripe
+    source: custom
+    confidence: medium
+    regex: '\bpk_(?:live|test)_[A-Za-z0-9]{24,}\b'
+    keywords: ["stripe", "pk_"]
+    entropy: null
+    tags: ["custom"]
+    checksum_type: null
+    replacement_type: faker_api_key
+    description: "Stripe publishable key (lower risk but still PII-adjacent)"
+    severity: low
+
+  - id: secret.stripe-webhook
+    name: Stripe Webhook Secret
+    category: secret
+    subcategory: stripe
+    source: custom
+    confidence: high
+    regex: '\bwhsec_[A-Za-z0-9]{30,}\b'
+    keywords: ["stripe", "whsec_"]
+    entropy: null
+    tags: ["custom"]
+    checksum_type: null
+    replacement_type: faker_api_key
+    description: "Stripe webhook signing secret"
+    severity: high
+
+  # ──────────────────────────────────────────────────────────────────────
+  # Cloud — Azure, GCP, DigitalOcean
+  # ──────────────────────────────────────────────────────────────────────
+
+  - id: secret.gcp-api-key
+    name: GCP API Key
+    category: secret
+    subcategory: gcp
+    source: custom
+    confidence: high
+    regex: '\bAIza[A-Za-z0-9_\-]{35}\b'
+    keywords: ["gcp", "google", "AIza"]
+    entropy: null
+    tags: ["custom"]
+    checksum_type: null
+    replacement_type: faker_api_key
+    description: "Google Cloud Platform API key (AIza…)"
+    severity: high
+
+  - id: secret.gcp-oauth-client-secret
+    name: GCP OAuth Client Secret
+    category: secret
+    subcategory: gcp
+    source: custom
+    confidence: high
+    regex: '\bGOCSPX-[A-Za-z0-9_\-]{20,}\b'
+    keywords: ["gcp", "google", "GOCSPX"]
+    entropy: null
+    tags: ["custom"]
+    checksum_type: null
+    replacement_type: faker_api_key
+    description: "GCP OAuth 2.0 client secret (GOCSPX-…)"
+    severity: high
+
+  - id: secret.digitalocean-pat
+    name: DigitalOcean PAT
+    category: secret
+    subcategory: digitalocean
+    source: custom
+    confidence: high
+    regex: '\bdop_v1_[A-Za-z0-9]{60,}\b'
+    keywords: ["digitalocean", "dop_v1"]
+    entropy: null
+    tags: ["custom"]
+    checksum_type: null
+    replacement_type: faker_api_key
+    description: "DigitalOcean personal access token"
+    severity: high
+
+  - id: secret.aws-session-token
+    name: AWS Session Token
+    category: secret
+    subcategory: aws
+    source: custom
+    confidence: high
+    regex: '\bAWS_SESSION_TOKEN[ \t]*=[ \t]*[A-Za-z0-9/+=]{50,}'
+    keywords: ["aws", "session"]
+    entropy: null
+    tags: ["custom"]
+    checksum_type: null
+    replacement_type: faker_api_key
+    description: "AWS STS session token (assignment form)"
+    severity: high
+
+  # ──────────────────────────────────────────────────────────────────────
+  # Communications — Slack, Discord, Telegram, Twilio, SendGrid, etc.
+  # ──────────────────────────────────────────────────────────────────────
+
+  - id: secret.slack-bot-token
+    name: Slack Bot Token (xoxb)
+    category: secret
+    subcategory: slack
+    source: custom
+    confidence: high
+    regex: '\bxoxb-[A-Za-z0-9\-]{20,}\b'
+    keywords: ["slack", "xoxb"]
+    entropy: null
+    tags: ["custom"]
+    checksum_type: null
+    replacement_type: faker_api_key
+    description: "Slack bot token"
+    severity: high
+
+  - id: secret.slack-user-token
+    name: Slack User Token (xoxp)
+    category: secret
+    subcategory: slack
+    source: custom
+    confidence: high
+    regex: '\bxoxp-[A-Za-z0-9\-]{20,}\b'
+    keywords: ["slack", "xoxp"]
+    entropy: null
+    tags: ["custom"]
+    checksum_type: null
+    replacement_type: faker_api_key
+    description: "Slack user token"
+    severity: high
+
+  - id: secret.discord-bot-token
+    name: Discord Bot Token
+    category: secret
+    subcategory: discord
+    source: custom
+    confidence: medium
+    regex: '\b[A-Za-z0-9_\-]{24}\.[A-Za-z0-9_\-]{6}\.[A-Za-z0-9_\-]{27,}\b'
+    keywords: ["discord", "bot"]
+    entropy: null
+    tags: ["custom"]
+    checksum_type: null
+    replacement_type: faker_jwt
+    description: "Discord bot token (3 base64-ish segments separated by dots)"
+    severity: high
+
+  - id: secret.telegram-bot-token
+    name: Telegram Bot Token
+    category: secret
+    subcategory: telegram
+    source: custom
+    confidence: high
+    regex: '\b[0-9]{8,12}:[A-Za-z0-9_\-]{30,}\b'
+    keywords: ["telegram"]
+    entropy: null
+    tags: ["custom"]
+    checksum_type: null
+    replacement_type: faker_api_key
+    description: "Telegram bot API token"
+    severity: high
+
+  - id: secret.twilio-account-sid
+    name: Twilio Account SID
+    category: secret
+    subcategory: twilio
+    source: custom
+    confidence: high
+    regex: '\bAC[a-f0-9]{32}\b'
+    keywords: ["twilio"]
+    entropy: null
+    tags: ["custom"]
+    checksum_type: null
+    replacement_type: faker_api_key
+    description: "Twilio Account SID"
+    severity: medium
+
+  - id: secret.twilio-api-key-sid
+    name: Twilio API Key SID
+    category: secret
+    subcategory: twilio
+    source: custom
+    confidence: high
+    regex: '\bSK[a-f0-9]{32}\b'
+    keywords: ["twilio"]
+    entropy: null
+    tags: ["custom"]
+    checksum_type: null
+    replacement_type: faker_api_key
+    description: "Twilio API key SID"
+    severity: high
+
+  - id: secret.sendgrid-api-key
+    name: SendGrid API Key
+    category: secret
+    subcategory: sendgrid
+    source: custom
+    confidence: high
+    regex: '\bSG\.[A-Za-z0-9_\-]{20,}\.[A-Za-z0-9_\-]{30,}\b'
+    keywords: ["sendgrid"]
+    entropy: null
+    tags: ["custom"]
+    checksum_type: null
+    replacement_type: faker_api_key
+    description: "SendGrid API key (SG.id.secret)"
+    severity: high
+
+  # ──────────────────────────────────────────────────────────────────────
+  # Monitoring / observability
+  # ──────────────────────────────────────────────────────────────────────
+
+  - id: secret.sentry-dsn
+    name: Sentry DSN
+    category: secret
+    subcategory: sentry
+    source: custom
+    confidence: high
+    regex: 'https://[a-f0-9]{32}@[a-z0-9.\-]+\.ingest\.sentry\.io/[0-9]+'
+    keywords: ["sentry", "ingest"]
+    entropy: null
+    tags: ["custom"]
+    checksum_type: null
+    replacement_type: faker_url_cred
+    description: "Sentry DSN containing public key"
+    severity: medium
+
+  - id: secret.newrelic-license
+    name: New Relic License Key
+    category: secret
+    subcategory: newrelic
+    source: custom
+    confidence: medium
+    regex: '\b[A-Za-z0-9]{36}NRAL\b'
+    keywords: ["new relic", "newrelic", "NRAL"]
+    entropy: null
+    tags: ["custom"]
+    checksum_type: null
+    replacement_type: faker_api_key
+    description: "New Relic license key (40 chars ending NRAL)"
+    severity: high
+
+  # ──────────────────────────────────────────────────────────────────────
+  # Databases — connection strings with embedded credentials
+  # ──────────────────────────────────────────────────────────────────────
+
+  - id: secret.mongodb-srv-uri
+    name: MongoDB SRV URI
+    category: secret
+    subcategory: mongodb
+    source: custom
+    confidence: high
+    regex: 'mongodb(?:\+srv)?://[^:\s]+:[^@\s]+@[a-zA-Z0-9.\-]+'
+    keywords: ["mongodb", "mongodb+srv"]
+    entropy: null
+    tags: ["custom"]
+    checksum_type: null
+    replacement_type: faker_db_conn
+    description: "MongoDB connection string with credentials"
+    severity: high
+
+  - id: secret.redis-uri
+    name: Redis URI with Credentials
+    category: secret
+    subcategory: redis
+    source: custom
+    confidence: medium
+    regex: 'redis(?:s|://):[^@\s]+@[a-zA-Z0-9.\-]+'
+    keywords: ["redis"]
+    entropy: null
+    tags: ["custom"]
+    checksum_type: null
+    replacement_type: faker_db_conn
+    description: "Redis URL with embedded password"
+    severity: high
+
+  # ──────────────────────────────────────────────────────────────────────
+  # PII — credit cards (with separators), phones (international), Luhn-less IBANs
+  # ──────────────────────────────────────────────────────────────────────
+
+  - id: pii.cc-spaced
+    name: Credit Card (with separators)
+    category: pii
+    subcategory: cc
+    source: custom
+    confidence: medium
+    regex: '\b(?:4[0-9]{3}[ -]?[0-9]{4}[ -]?[0-9]{4}[ -]?[0-9]{4}|[25][1-7][0-9]{2}[ -]?[0-9]{4}[ -]?[0-9]{4}[ -]?[0-9]{4}|3[47][0-9]{2}[ -]?[0-9]{6}[ -]?[0-9]{5}|6011[ -]?[0-9]{4}[ -]?[0-9]{4}[ -]?[0-9]{4})\b'
+    keywords: ["card", "visa", "mastercard", "amex", "discover"]
+    entropy: null
+    tags: ["custom"]
+    checksum_type: null
+    replacement_type: faker_cc_luhn
+    description: "Credit card numbers allowing space or dash separators"
+    severity: medium
+
+  - id: pii.phone-international
+    name: International Phone Number
+    category: pii
+    subcategory: phone
+    source: custom
+    confidence: medium
+    regex: '\+(?:[0-9][ \-.()]?){7,15}\b'
+    keywords: ["phone", "tel", "mobile"]
+    entropy: null
+    tags: ["custom"]
+    checksum_type: null
+    replacement_type: faker_phone
+    description: "International phone number, leading + then 7-15 digits with optional separators"
+    severity: low
+
+  - id: pii.iban-generic
+    name: IBAN (generic, with optional spaces)
+    category: pii
+    subcategory: iban
+    source: custom
+    confidence: medium
+    regex: '\b[A-Z]{2}[0-9]{2}(?:[ ]?[A-Z0-9]{4}){3,7}(?:[ ]?[A-Z0-9]{1,4})?\b'
+    keywords: ["iban"]
+    entropy: null
+    tags: ["custom"]
+    checksum_type: null
+    replacement_type: faker_iban
+    description: "IBAN with country code + check digits + 4-char groups (allows internal spaces)"
+    severity: medium
+
+  # ──────────────────────────────────────────────────────────────────────
+  # PII — government IDs (US passport, EIN, ITIN; non-US not yet covered by ha.*)
+  # ──────────────────────────────────────────────────────────────────────
+
+  - id: pii.us-passport
+    name: US Passport Number
+    category: pii
+    subcategory: us-passport
+    source: custom
+    confidence: medium
+    regex: '\b[A-Z][0-9]{8}\b'
+    keywords: ["passport"]
+    entropy: null
+    tags: ["custom"]
+    checksum_type: null
+    replacement_type: generic_random
+    description: "US passport number (1 letter + 8 digits, format-match only)"
+    severity: medium
+
+  - id: pii.us-ein
+    name: US Employer EIN
+    category: pii
+    subcategory: us-ein
+    source: custom
+    confidence: medium
+    regex: '\b[0-9]{2}-[0-9]{7}\b'
+    keywords: ["ein", "employer"]
+    entropy: null
+    tags: ["custom"]
+    checksum_type: null
+    replacement_type: fpe_numeric
+    description: "US Employer Identification Number"
+    severity: low
+
+  # ──────────────────────────────────────────────────────────────────────
+  # Crypto wallets
+  # ──────────────────────────────────────────────────────────────────────
+
+  - id: secret.eth-private-key
+    name: Ethereum Private Key
+    category: secret
+    subcategory: eth
+    source: custom
+    confidence: high
+    regex: '\b0x[a-fA-F0-9]{64}\b'
+    keywords: ["ethereum", "eth", "private"]
+    entropy: null
+    tags: ["custom"]
+    checksum_type: null
+    replacement_type: generic_random
+    description: "Ethereum private key (0x + 64 hex)"
+    severity: high
+
+  - id: pii.btc-wallet
+    name: Bitcoin Wallet Address
+    category: pii
+    subcategory: btc
+    source: custom
+    confidence: medium
+    regex: '\b(?:[13][a-km-zA-HJ-NP-Z1-9]{25,34}|bc1[a-z0-9]{20,80})\b'
+    keywords: ["bitcoin", "btc", "wallet"]
+    entropy: null
+    tags: ["custom"]
+    checksum_type: null
+    replacement_type: generic_random
+    description: "Bitcoin address (legacy or bech32 SegWit)"
+    severity: medium

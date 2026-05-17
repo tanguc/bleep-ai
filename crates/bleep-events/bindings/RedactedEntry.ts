@@ -7,4 +7,4 @@
  * or log). The original matched bytes are NEVER on this struct — they
  * stay only in the on-disk JSONL audit log.
  */
-export type RedactedEntry = { rule_id: string, category: string, subcategory: string, severity: string, fake_value: string, };
+export type RedactedEntry = { rule_id: string, category: string, subcategory: string, severity: string, original: string, fake_value: string, };

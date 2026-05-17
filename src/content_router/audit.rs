@@ -32,6 +32,11 @@ pub fn write_audit_entries(
     }
 
     use std::io::Write;
+    if let Some(parent) = log_path.parent() {
+        if !parent.as_os_str().is_empty() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+    }
     let mut file = std::fs::OpenOptions::new()
         .create(true)
         .append(true)

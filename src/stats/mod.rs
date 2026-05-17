@@ -1,9 +1,14 @@
 //! SQLite-backed redaction history for the menu-bar dashboard.
 //!
-//! Stores aggregatable metadata only (rule id, category, subcategory, severity,
-//! direction, timestamp). The original matched bytes never reach this DB —
-//! they stay in the JSONL audit log on disk per the existing security
-//! invariant. The DB is for "how many secrets / what kind / when" queries.
+//! v1 stored aggregatable metadata only (rule id, category, subcategory,
+//! severity, direction, timestamp).
+//!
+//! v2 adds a sibling table `redaction_entries` carrying the per-row `original`
+//! and `fake` values, so the dashboard's drill-down view can show what was
+//! actually replaced — not just the count. Originals previously lived only in
+//! the JSONL audit log; they're now also readable via the loopback stats
+//! server. Keep that in mind if you ever expose the stats server beyond
+//! 127.0.0.1.
 //!
 //! Single global connection guarded by a Mutex (SQLite is single-writer; our
 //! write rate is small enough that contention is invisible in profiling).
@@ -12,10 +17,11 @@ use rusqlite::{Connection, params};
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
+use tracing::debug;
 
 use crate::replacement::Redaction;
 
-const SCHEMA_VERSION: i64 = 1;
+const SCHEMA_VERSION: i64 = 2;
 
 const SCHEMA_V1: &str = r#"
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -38,6 +44,24 @@ CREATE INDEX IF NOT EXISTS idx_redactions_category ON redactions(category, subca
 CREATE INDEX IF NOT EXISTS idx_redactions_request_id ON redactions(request_id);
 "#;
 
+// Sibling table — the secret half. Split from `redactions` so the metadata
+// half can stay queryable even if we later encrypt/restrict this one. FK
+// cascade keeps the two in sync on row delete (retention prune, vacuum, etc).
+const SCHEMA_V2: &str = r#"
+CREATE TABLE IF NOT EXISTS redaction_entries (
+    redaction_id INTEGER PRIMARY KEY,
+    original     TEXT NOT NULL,
+    fake         TEXT NOT NULL,
+    FOREIGN KEY (redaction_id) REFERENCES redactions(id) ON DELETE CASCADE
+);
+
+-- composite indexes that match the drill-down query shape (filter then sort DESC by ts).
+-- the v1 idx_redactions_category is a strict prefix of idx_redactions_category_ts,
+-- but we keep both: v1 covers COUNT GROUP BY, v2 covers ORDER BY ts DESC scans.
+CREATE INDEX IF NOT EXISTS idx_redactions_category_ts ON redactions(category, subcategory, ts DESC);
+CREATE INDEX IF NOT EXISTS idx_redactions_rule_id_ts  ON redactions(rule_id, ts DESC);
+"#;
+
 static DB: OnceLock<Mutex<Connection>> = OnceLock::new();
 
 /// Direction of a redaction (which side of the proxy it occurred on).
@@ -56,44 +80,38 @@ impl Direction {
     }
 }
 
-/// Aggregated counts for the dashboard summary card.
-#[derive(Debug, Clone, serde::Serialize, Default)]
-pub struct Summary {
-    pub total: u64,
-    pub last_24h: u64,
-    pub last_7d: u64,
-    pub last_30d: u64,
-}
+// HTTP response shapes live in the shared bleep-events crate so the
+// menu-bar GUI gets ts-rs-generated TS types via `@bleep-events/*`.
+// Re-exported here so existing internal callers don't need to change imports.
+pub use bleep_events::{CategoryCount, RuleCount, Summary};
 
-/// One row of the (category, subcategory) breakdown.
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct CategoryCount {
-    pub category: String,
-    pub subcategory: String,
-    pub count: u64,
-}
-
-/// One row of the rule-level breakdown.
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct RuleCount {
-    pub rule_id: String,
-    pub count: u64,
-}
-
-/// Default database location alongside the proxy's audit log.
+/// Default database location: `~/.bleep/bleep-stats.db`.
+/// Falls back to the current directory if `$HOME` is unset.
 pub fn default_path() -> PathBuf {
-    PathBuf::from("bleep-stats.db")
+    match std::env::var_os("HOME") {
+        Some(home) => PathBuf::from(home).join(".bleep").join("bleep-stats.db"),
+        None => PathBuf::from("bleep-stats.db"),
+    }
 }
 
 /// Initialize the global DB at the given path. Idempotent.
 /// Creates the file if it does not exist; runs migrations to bring schema to current version.
 pub fn init(path: &PathBuf) -> Result<(), rusqlite::Error> {
+    if let Some(parent) = path.parent() {
+        if !parent.as_os_str().is_empty() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+    }
     let conn = Connection::open(path)?;
     conn.execute_batch(SCHEMA_V1)?;
+    conn.execute_batch(SCHEMA_V2)?;
+    // FK enforcement is per-connection on SQLite — keep cascade working.
+    conn.execute_batch("PRAGMA foreign_keys = ON;")?;
 
-    // record schema version (insert-or-ignore — first run only)
+    // record schema version (insert-or-ignore — first run only).
+    // bump on upgrade so future migrations can branch off the stored version.
     conn.execute(
-        "INSERT OR IGNORE INTO schema_version (version) VALUES (?1)",
+        "INSERT OR REPLACE INTO schema_version (version) VALUES (?1)",
         params![SCHEMA_VERSION],
     )?;
 
@@ -113,6 +131,7 @@ pub fn record_redactions(direction: Direction, request_id: &str, redactions: &[R
     if redactions.is_empty() {
         return;
     }
+    let _g = crate::perf::span("stats.record_redactions");
     let Some(db) = DB.get() else {
         return;
     };
@@ -122,10 +141,14 @@ pub fn record_redactions(direction: Direction, request_id: &str, redactions: &[R
         .unwrap_or(0);
     let dir = direction.as_str();
 
+    let t_lock = std::time::Instant::now();
     let mut conn = match db.lock() {
         Ok(c) => c,
         Err(_) => return,
     };
+    crate::perf::record("stats.db_lock_wait", t_lock.elapsed());
+
+    let t_tx = std::time::Instant::now();
     let tx = match conn.transaction() {
         Ok(t) => t,
         Err(e) => {
@@ -133,34 +156,70 @@ pub fn record_redactions(direction: Direction, request_id: &str, redactions: &[R
             return;
         }
     };
-    {
-        let mut stmt = match tx.prepare_cached(
+    crate::perf::record("stats.tx_begin", t_tx.elapsed());
+
+    debug!(
+        "[stats] recording {} redactions for request_id={}",
+        redactions.len(),
+        request_id
+    );
+    let t_inserts = std::time::Instant::now();
+    for r in redactions {
+        // 1) metadata row — drives summary counters and bar charts.
+        if let Err(e) = tx.execute(
             "INSERT INTO redactions (ts, rule_id, category, subcategory, severity, direction, request_id)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![ts, r.rule_id, r.category, r.subcategory, r.severity, dir, request_id],
         ) {
-            Ok(s) => s,
-            Err(e) => {
-                eprintln!("[stats] prepare failed: {e}");
-                return;
-            }
-        };
-        for r in redactions {
-            if let Err(e) = stmt.execute(params![
-                ts,
-                r.rule_id,
-                r.category,
-                r.subcategory,
-                r.severity,
-                dir,
-                request_id
-            ]) {
-                eprintln!("[stats] insert failed: {e}");
-            }
+            eprintln!("[stats] insert (redactions) failed: {e}");
+            continue;
+        }
+        let rid = tx.last_insert_rowid();
+        // 2) sibling row carrying the secret half — drives the drill-down view.
+        if let Err(e) = tx.execute(
+            "INSERT INTO redaction_entries (redaction_id, original, fake) VALUES (?1, ?2, ?3)",
+            params![rid, r.original, r.fake],
+        ) {
+            eprintln!("[stats] insert (redaction_entries) failed: {e}");
         }
     }
+    crate::perf::record("stats.inserts", t_inserts.elapsed());
+    let t_commit = std::time::Instant::now();
     if let Err(e) = tx.commit() {
         eprintln!("[stats] commit failed: {e}");
     }
+    crate::perf::record("stats.tx_commit", t_commit.elapsed());
+}
+
+/// Wipe all redaction history. Returns number of metadata rows deleted.
+/// FK cascade clears redaction_entries; perf counters are NOT touched.
+pub fn reset_all() -> u64 {
+    let Some(db) = DB.get() else {
+        return 0;
+    };
+    let mut conn = match db.lock() {
+        Ok(c) => c,
+        Err(_) => return 0,
+    };
+    let tx = match conn.transaction() {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("[stats] reset begin tx failed: {e}");
+            return 0;
+        }
+    };
+    let deleted = tx.execute("DELETE FROM redactions", []).unwrap_or(0) as u64;
+    // entries gets cascade-deleted via FK, but be explicit for clarity / older rows.
+    let _ = tx.execute("DELETE FROM redaction_entries", []);
+    if let Err(e) = tx.commit() {
+        eprintln!("[stats] reset commit failed: {e}");
+        return 0;
+    }
+    // reclaim disk so the dashboard "all-time" counter and file size match.
+    if let Err(e) = conn.execute_batch("VACUUM;") {
+        eprintln!("[stats] vacuum after reset failed: {e}");
+    }
+    deleted
 }
 
 /// Total counts by time window. Returns zeros if init() was not called.
@@ -258,6 +317,149 @@ pub fn top_rules(limit: usize) -> Vec<RuleCount> {
         Ok(it) => it.filter_map(Result::ok).collect(),
         Err(_) => vec![],
     }
+}
+
+// ── drill-down query (v2) ────────────────────────────────────────────────────
+
+/// Filters for the drill-down query. All fields optional; any combination is
+/// supported. Empty filter returns the most recent rows up to `limit`.
+#[derive(Debug, Default, Clone)]
+pub struct RedactionFilter {
+    pub category: Option<String>,
+    pub subcategory: Option<String>,
+    pub rule_id: Option<String>,
+    pub request_id: Option<String>,
+    /// substring match against original OR fake_value (case-insensitive)
+    pub q: Option<String>,
+    pub since: Option<i64>,
+    pub until: Option<i64>,
+}
+
+/// Cursor encoding for stable pagination. Format: `"<ts>:<id>"`. Pages are
+/// served newest-first, so the next page is "everything strictly older than
+/// (ts, id)". Encoding `ts` first keeps the comparison index-friendly.
+fn encode_cursor(ts: i64, id: i64) -> String {
+    format!("{ts}:{id}")
+}
+fn decode_cursor(s: &str) -> Option<(i64, i64)> {
+    let (a, b) = s.split_once(':')?;
+    Some((a.parse().ok()?, b.parse().ok()?))
+}
+
+/// Fetch a page of redacted rows joined with originals/fakes. Sorted by
+/// `(ts DESC, id DESC)`. Returns `(rows, next_cursor)` where `next_cursor`
+/// is `None` if the result is smaller than `limit` (end of stream).
+pub fn query_redactions(
+    f: &RedactionFilter,
+    limit: usize,
+    cursor: Option<&str>,
+) -> (Vec<bleep_events::RedactedRow>, Option<String>) {
+    let Some(db) = DB.get() else {
+        return (vec![], None);
+    };
+    let conn = match db.lock() {
+        Ok(c) => c,
+        Err(_) => return (vec![], None),
+    };
+
+    // build WHERE clause + params in tandem so we don't double-bind anything.
+    let mut wheres: Vec<&'static str> = Vec::new();
+    let mut binds: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+    if let Some(v) = &f.category {
+        wheres.push("r.category = ?");
+        binds.push(Box::new(v.clone()));
+    }
+    if let Some(v) = &f.subcategory {
+        wheres.push("r.subcategory = ?");
+        binds.push(Box::new(v.clone()));
+    }
+    if let Some(v) = &f.rule_id {
+        wheres.push("r.rule_id = ?");
+        binds.push(Box::new(v.clone()));
+    }
+    if let Some(v) = &f.request_id {
+        wheres.push("r.request_id = ?");
+        binds.push(Box::new(v.clone()));
+    }
+    if let Some(v) = &f.since {
+        wheres.push("r.ts >= ?");
+        binds.push(Box::new(*v));
+    }
+    if let Some(v) = &f.until {
+        wheres.push("r.ts <= ?");
+        binds.push(Box::new(*v));
+    }
+    if let Some(v) = &f.q {
+        wheres.push("(e.original LIKE ? OR e.fake LIKE ?)");
+        let like = format!("%{v}%");
+        binds.push(Box::new(like.clone()));
+        binds.push(Box::new(like));
+    }
+    if let Some((ts, id)) = cursor.and_then(decode_cursor) {
+        // newest-first, so "next page" = strictly older
+        wheres.push("(r.ts < ? OR (r.ts = ? AND r.id < ?))");
+        binds.push(Box::new(ts));
+        binds.push(Box::new(ts));
+        binds.push(Box::new(id));
+    }
+
+    let where_clause = if wheres.is_empty() {
+        String::new()
+    } else {
+        format!(" WHERE {}", wheres.join(" AND "))
+    };
+    let sql = format!(
+        "SELECT r.id, r.ts, r.rule_id, r.category, r.subcategory, r.severity,
+                r.direction, r.request_id, e.original, e.fake
+         FROM redactions r
+         LEFT JOIN redaction_entries e ON e.redaction_id = r.id
+         {where_clause}
+         ORDER BY r.ts DESC, r.id DESC
+         LIMIT ?"
+    );
+    binds.push(Box::new(limit as i64));
+
+    let bind_refs: Vec<&dyn rusqlite::ToSql> = binds.iter().map(|b| b.as_ref()).collect();
+    let mut stmt = match conn.prepare(&sql) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("[stats] prepare query_redactions failed: {e}");
+            return (vec![], None);
+        }
+    };
+
+    let rows_it = stmt.query_map(rusqlite::params_from_iter(bind_refs), |row| {
+        Ok(bleep_events::RedactedRow {
+            id: row.get(0)?,
+            ts: row.get(1)?,
+            rule_id: row.get(2)?,
+            category: row.get(3)?,
+            subcategory: row.get(4)?,
+            severity: row.get(5)?,
+            direction: row.get(6)?,
+            request_id: row.get(7)?,
+            // LEFT JOIN: e.original / e.fake are NULL for pre-v2-migration rows.
+            // Surface a placeholder so the UI shows the metadata row anyway —
+            // before this they were silently filtered out by an INNER JOIN.
+            original: row.get::<_, Option<String>>(8)?.unwrap_or_else(|| "(not recorded)".to_string()),
+            fake_value: row.get::<_, Option<String>>(9)?.unwrap_or_else(|| "(not recorded)".to_string()),
+        })
+    });
+    let rows: Vec<bleep_events::RedactedRow> = match rows_it {
+        Ok(it) => it.filter_map(Result::ok).collect(),
+        Err(e) => {
+            eprintln!("[stats] query_redactions iter failed: {e}");
+            return (vec![], None);
+        }
+    };
+
+    // next_cursor = the last row's (ts, id), unless we got a short page.
+    let next_cursor = if rows.len() < limit {
+        None
+    } else {
+        rows.last().map(|r| encode_cursor(r.ts, r.id))
+    };
+    (rows, next_cursor)
 }
 
 #[cfg(test)]

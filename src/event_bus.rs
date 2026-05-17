@@ -34,7 +34,7 @@ pub fn start_tcp_server() {
         let port = local_addr.port();
 
         // use std::fs (sync) to ensure file is written before anything else runs
-        if let Err(e) = std::fs::write("/tmp/bleep-events.port", port.to_string()) {
+        if let Err(e) = std::fs::write(crate::devmode::events_port_file(), port.to_string()) {
             eprintln!("event_bus: failed to write port file: {e}");
         }
         eprintln!("event_bus: listening on 127.0.0.1:{port}");
@@ -54,13 +54,15 @@ pub fn start_tcp_server() {
 }
 
 async fn bind_first_available() -> TcpListener {
-    for port in 9191u16..=9200 {
+    let range = crate::devmode::events_port_range();
+    let (start, end) = (*range.start(), *range.end());
+    for port in range {
         match TcpListener::bind(("127.0.0.1", port)).await {
             Ok(l) => return l,
             Err(_) => continue,
         }
     }
-    panic!("event_bus: no available port in range 9191-9200");
+    panic!("event_bus: no available port in range {start}-{end}");
 }
 
 async fn handle_client(

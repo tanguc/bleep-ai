@@ -1,131 +1,93 @@
 name: release
+# Fires on every push to main. cocogitto inspects commits since the last
+# tag, decides the next semver, edits the version files, commits, tags,
+# and pushes. The tag push triggers build.yml which produces the actual
+# binaries + GitHub Release.
+#
+# Skipped when:
+#  - the head commit was made by this workflow (`chore(version): X.Y.Z`)
+#    — avoids infinite loops
+#  - no commits since last tag qualify for a bump (no feat/fix/perf/!)
+#
+# Requires repo secret BLEEP_AI_TOKEN: a fine-grained PAT with
+# `Contents: read/write` so the push-back fires build.yml (GITHUB_TOKEN
+# pushes deliberately do NOT trigger other workflows).
+
 on:
   push:
-    tags: ['v*']
+    branches: [main]
 
 permissions:
   contents: write
 
+concurrency:
+  # Never two release jobs at once; queue them so version numbers stay sequential.
+  group: release
+  cancel-in-progress: false
+
 jobs:
-  publish-gateway:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: macos-14
-            target: aarch64-apple-darwin
-          - platform: macos-13
-            target: x86_64-apple-darwin
-    runs-on: ${{ matrix.platform }}
+  release:
+    runs-on: ubuntu-latest
+    # Loop-guard: cocogitto's bump commit starts with "chore(version):" —
+    # don't react to our own push-back.
+    if: "!startsWith(github.event.head_commit.message, 'chore(version):')"
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Checkout (full history, push via PAT)
+        uses: actions/checkout@v4
         with:
-          targets: ${{ matrix.target }}
-      - uses: Swatinem/rust-cache@v2
-      - name: Build gateway
-        run: cargo build --release --bin bleep-gateway --target ${{ matrix.target }}
-      - name: Stage release tree
-        run: |
-          set -euo pipefail
-          STAGE="$RUNNER_TEMP/stage"
-          mkdir -p "$STAGE/bin" "$STAGE/lib/bleep/src"
-          cp "target/${{ matrix.target }}/release/bleep-gateway" "$STAGE/bin/bleep-gateway"
-          cp claude-wrapper.sh "$STAGE/lib/bleep/bleep-wrapper.sh"
-          chmod +x "$STAGE/lib/bleep/bleep-wrapper.sh"
-          bash scripts/extract-cert.sh "$STAGE/lib/bleep/src"
-          VERSION="${GITHUB_REF_NAME#v}"
-          echo "$VERSION" > "$STAGE/.version"
-      - name: Package archive
-        run: |
-          set -euo pipefail
-          STAGE="$RUNNER_TEMP/stage"
-          ARCHIVE="bleep-gateway-${{ matrix.target }}.tar.gz"
-          tar -C "$STAGE" -czf "$ARCHIVE" bin lib .version
-          shasum -a 256 "$ARCHIVE" > "$ARCHIVE.sha256"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: gateway-${{ matrix.target }}
-          path: |
-            bleep-gateway-${{ matrix.target }}.tar.gz
-            bleep-gateway-${{ matrix.target }}.tar.gz.sha256
-      - uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.ref_name }}
-          draft: true
-          files: |
-            bleep-gateway-${{ matrix.target }}.tar.gz
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+          # Use the PAT so the subsequent git push fires build.yml.
+          # With GITHUB_TOKEN, the tag push would NOT trigger the build workflow
+          # (GitHub's anti-loop guard).
+          token: ${{ secrets.BLEEP_AI_TOKEN }}
 
-  publish-app:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: macos-14
-            args: '--target aarch64-apple-darwin'
-            target: aarch64-apple-darwin
-          - platform: macos-13
-            args: '--target x86_64-apple-darwin'
-            target: x86_64-apple-darwin
-    runs-on: ${{ matrix.platform }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-apple-darwin,x86_64-apple-darwin
-      - uses: Swatinem/rust-cache@v2
-      - uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          projectPath: apps/menu-bar/src-tauri
-          tagName: ${{ github.ref_name }}
-          releaseName: Bleep ${{ github.ref_name }}
-          releaseDraft: true
-          args: ${{ matrix.args }}
-      - name: Locate and rename .app.tar.gz
+      - name: Configure git identity
         run: |
-          set -euo pipefail
-          SRC="apps/menu-bar/src-tauri/target/${{ matrix.target }}/release/bundle/macos"
-          ORIG=$(ls "$SRC"/*.app.tar.gz | head -n1)
-          cp "$ORIG" "Bleep.app-${{ matrix.target }}.tar.gz"
-          shasum -a 256 "Bleep.app-${{ matrix.target }}.tar.gz" > "Bleep.app-${{ matrix.target }}.tar.gz.sha256"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: app-${{ matrix.target }}
-          path: |
-            Bleep.app-${{ matrix.target }}.tar.gz
-            Bleep.app-${{ matrix.target }}.tar.gz.sha256
-      - uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.ref_name }}
-          draft: true
-          files: |
-            Bleep.app-${{ matrix.target }}.tar.gz
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@example.com"
 
-  checksums:
-    needs: [publish-gateway, publish-app]
-    runs-on: macos-14
-    steps:
-      - uses: actions/download-artifact@v4
+      - name: Install Python (used by cog.toml's tauri.conf.json bump hook)
+        uses: actions/setup-python@v5
         with:
-          pattern: '*'
-          path: dist
-          merge-multiple: true
-      - name: Build checksums.txt
+          python-version: '3.x'
+
+      - name: Install Rust toolchain (used by cog.toml's cargo update hooks)
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install cocogitto
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cocogitto
+
+      - name: Lint commits since last tag (fail fast on non-conventional)
+        # commit-msg + pre-push hooks should catch this locally, but if anyone
+        # used --no-verify we'd rather die here than mid-bump.
+        run: cog check --from-latest-tag
+
+      - name: Decide whether to release
+        id: decide
         run: |
-          set -euo pipefail
-          cd dist
-          cat *.sha256 > checksums.txt
-          cat checksums.txt
-      - uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.ref_name }}
-          draft: true
-          files: dist/checksums.txt
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # cog bump --dry-run prints "Bumping from X.Y.Z to A.B.C" when there's
+          # something to release, otherwise something like "No commit found to
+          # bump current version". Parse it to gate the real bump.
+          set -o pipefail
+          out=$(cog bump --auto --dry-run 2>&1 || true)
+          echo "$out"
+          if grep -qi "bumping\|next version" <<<"$out"; then
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            echo "Nothing to release — head commit had no feat:/fix:/perf:/BREAKING."
+          fi
+
+      - name: Bump, commit, tag
+        if: steps.decide.outputs.release == 'true'
+        run: cog bump --auto
+
+      - name: Push commit + tag
+        if: steps.decide.outputs.release == 'true'
+        run: |
+          git push origin main
+          git push origin --tags

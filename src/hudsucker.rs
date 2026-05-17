@@ -107,6 +107,7 @@ impl LogHandler {
                 category: r.category.clone(),
                 subcategory: r.subcategory.clone(),
                 severity: r.severity.clone(),
+                original: r.original.clone(),
                 fake_value: r.fake.clone(),
             })
             .collect()
@@ -119,6 +120,7 @@ impl HttpHandler for LogHandler {
         _ctx: &HttpContext,
         mut req: Request<Body>,
     ) -> RequestOrResponse {
+        let _g_total = crate::perf::span("hudsucker.request.total");
         // rewrite relative URIs to absolute so hyper can forward them
         if let Some(host) = req.uri().host().map(std::borrow::ToOwned::to_owned) {
             let path_and_query = req
@@ -141,7 +143,9 @@ impl HttpHandler for LogHandler {
 
         // drain body
         let (mut parts, body) = req.into_parts();
+        let t_body = std::time::Instant::now();
         let bytes = body.collect().await.unwrap().to_bytes();
+        crate::perf::record("hudsucker.request.body_collect", t_body.elapsed());
 
         // extract content-type and content-encoding for routing
         let content_type = parts
@@ -159,13 +163,16 @@ impl HttpHandler for LogHandler {
         let content_type_str = content_type.as_deref().unwrap_or("");
 
         // call content router — handles all content types, compression, detection, replacement
+        let t_router = std::time::Instant::now();
         let (replaced_bytes, redactions) = content_router::process_body(
             content_type.as_deref(),
             content_encoding.as_deref(),
             bytes.clone(),
         );
+        crate::perf::record("hudsucker.request.content_router", t_router.elapsed());
 
         // log original body (before replacement for debugging)
+        let t_log = std::time::Instant::now();
         request_logger::log(&serde_json::json!({
             "type": "request",
             "ts": chrono::Utc::now().to_rfc3339(),
@@ -174,22 +181,28 @@ impl HttpHandler for LogHandler {
             "body": body_to_loggable(&bytes),
             "redactions": redactions.len(),
         }));
+        crate::perf::record("hudsucker.request.audit_log", t_log.elapsed());
 
         if !redactions.is_empty() {
             // update Content-Length (only if header was present — never add for chunked)
             content_router::update_content_length(&mut parts.headers, replaced_bytes.len(), true);
 
             // write JSONL audit entries (original values stay on disk only)
+            let t_audit = std::time::Instant::now();
             self.write_audit(&request_id, content_type_str, &redactions);
+            crate::perf::record("hudsucker.request.write_audit", t_audit.elapsed());
 
             // record metadata-only rows in the stats DB (originals never written here)
+            let t_db = std::time::Instant::now();
             crate::stats::record_redactions(
                 crate::stats::Direction::Request,
                 &request_id,
                 &redactions,
             );
+            crate::perf::record("hudsucker.request.stats_insert", t_db.elapsed());
 
             // emit to event bus (fake values only — originals never on bus)
+            let t_emit = std::time::Instant::now();
             let redacted_entries = Self::to_redacted_entries(&redactions);
             event_bus::emit(ProxyEvent::Request {
                 id: request_id,
@@ -198,7 +211,9 @@ impl HttpHandler for LogHandler {
                 uri: parts.uri.to_string(),
                 redacted: redacted_entries,
             });
+            crate::perf::record("hudsucker.request.event_emit", t_emit.elapsed());
         } else {
+            let t_emit = std::time::Instant::now();
             event_bus::emit(ProxyEvent::Request {
                 id: request_id,
                 ts: chrono::Utc::now().to_rfc3339(),
@@ -206,15 +221,35 @@ impl HttpHandler for LogHandler {
                 uri: parts.uri.to_string(),
                 redacted: vec![],
             });
+            crate::perf::record("hudsucker.request.event_emit_empty", t_emit.elapsed());
         }
+
+        // Disable upstream keep-alive. Hudsucker's hyper client otherwise
+        // pools idle TLS connections per-host; under burst load (e.g. parallel
+        // test traffic) those connections race the upstream's idle-timeout FIN
+        // and surface as "connection closed before message completed" errors.
+        // `Connection: close` makes each forward a fresh, single-shot
+        // connection — costs one TLS handshake per request but eliminates
+        // pool-staleness errors. Body integrity is preserved (handshake is
+        // separate from body framing). Also strips Keep-Alive so we don't
+        // send conflicting hop-by-hop headers.
+        parts.headers.remove(http::header::CONNECTION);
+        parts.headers.remove("keep-alive");
+        parts.headers.insert(
+            http::header::CONNECTION,
+            http::HeaderValue::from_static("close"),
+        );
 
         let req = Request::from_parts(parts, Body::from(http_body_util::Full::new(replaced_bytes)));
         req.into()
     }
 
     async fn handle_response(&mut self, _ctx: &HttpContext, res: Response<Body>) -> Response<Body> {
+        let _g_total = crate::perf::span("hudsucker.response.total");
         let (mut parts, body) = res.into_parts();
+        let t_body = std::time::Instant::now();
         let bytes = body.collect().await.unwrap().to_bytes();
+        crate::perf::record("hudsucker.response.body_collect", t_body.elapsed());
 
         let content_type = parts
             .headers
@@ -232,12 +267,15 @@ impl HttpHandler for LogHandler {
 
         // SSE and non-SSE both go through process_body — sse_process_full handles per-frame
         // within the buffered body (hudsucker buffers full response before returning)
+        let t_router = std::time::Instant::now();
         let (replaced_bytes, redactions) = content_router::process_body(
             content_type.as_deref(),
             content_encoding.as_deref(),
             bytes.clone(),
         );
+        crate::perf::record("hudsucker.response.content_router", t_router.elapsed());
 
+        let t_log = std::time::Instant::now();
         request_logger::log(&serde_json::json!({
             "type": "response",
             "ts": chrono::Utc::now().to_rfc3339(),
@@ -245,25 +283,32 @@ impl HttpHandler for LogHandler {
             "body": body_to_loggable(&bytes),
             "redactions": redactions.len(),
         }));
+        crate::perf::record("hudsucker.response.audit_log", t_log.elapsed());
 
         if !redactions.is_empty() {
             content_router::update_content_length(&mut parts.headers, replaced_bytes.len(), true);
 
+            let t_audit = std::time::Instant::now();
             self.write_audit(&request_id, content_type_str, &redactions);
+            crate::perf::record("hudsucker.response.write_audit", t_audit.elapsed());
 
+            let t_db = std::time::Instant::now();
             crate::stats::record_redactions(
                 crate::stats::Direction::Response,
                 &request_id,
                 &redactions,
             );
+            crate::perf::record("hudsucker.response.stats_insert", t_db.elapsed());
 
             let redacted_entries = Self::to_redacted_entries(&redactions);
+            let t_emit = std::time::Instant::now();
             event_bus::emit(ProxyEvent::Response {
                 id: request_id,
                 ts: chrono::Utc::now().to_rfc3339(),
                 uri: String::new(),
                 status: parts.status.as_u16(),
             });
+            crate::perf::record("hudsucker.response.event_emit", t_emit.elapsed());
             // log redacted entries separately — Response event doesn't carry them
             for entry in redacted_entries {
                 debug!(
@@ -272,12 +317,14 @@ impl HttpHandler for LogHandler {
                 );
             }
         } else {
+            let t_emit = std::time::Instant::now();
             event_bus::emit(ProxyEvent::Response {
                 id: request_id,
                 ts: chrono::Utc::now().to_rfc3339(),
                 uri: String::new(),
                 status: parts.status.as_u16(),
             });
+            crate::perf::record("hudsucker.response.event_emit_empty", t_emit.elapsed());
         }
 
         Response::from_parts(parts, Body::from(http_body_util::Full::new(replaced_bytes)))
@@ -303,8 +350,7 @@ fn spawn_parent_watchdog() {
     };
     println!("[parent-watchdog] watching parent pid {expected_parent}");
     tokio::spawn(async move {
-        let mut tick =
-            tokio::time::interval(std::time::Duration::from_millis(500));
+        let mut tick = tokio::time::interval(std::time::Duration::from_millis(500));
         loop {
             tick.tick().await;
             // SAFETY: getppid is always safe to call.
@@ -373,6 +419,6 @@ pub async fn run_hudsucker(port: u16, log_file: String, min_confidence: String) 
 
     println!("Proxy running. Press Ctrl+C to stop.");
     if let Err(e) = proxy.start().await {
-        error!("{}", e);
+        error!("{:?}", e);
     }
 }

@@ -37,6 +37,7 @@ fn main() {
         println!("  spdb rules        : {}", result.spdb_rules);
         println!("  nosey-parker rules: {}", result.np_rules);
         println!("  hand-authored     : {}", result.ha_rules);
+        println!("  custom            : {}", result.custom_rules);
         println!("  total (after merge): {}", result.total_rules);
         println!("  output            : {}", result.combined_path);
         println!("  fixtures          : {}", result.fixtures_path);

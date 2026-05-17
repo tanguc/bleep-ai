@@ -1,3 +1,18 @@
 /target
 .env
 *.jsonl
+.tokensave
+
+# runtime / local-only
+bleep-stats.db
+bleep-stats.db-shm
+bleep-stats.db-wal
+.DS_Store
+docs/.DS_Store
+
+# editor / tooling state
+.task/
+claude-wrapper.sh~
+
+# project-local Claude config (machine-specific)
+.claude/

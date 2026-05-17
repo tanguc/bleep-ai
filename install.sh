@@ -3,7 +3,7 @@ set -euo pipefail
 
 # ============================================================
 # Bleep installer
-# Usage:  curl -fsSL https://raw.githubusercontent.com/USER/bleep/main/install.sh | bash
+# Usage:  curl -fsSL https://raw.githubusercontent.com/tanguc/bleep-ai/main/install.sh | bash
 #         bash install.sh [flags]
 #
 # Flags:
@@ -11,15 +11,15 @@ set -euo pipefail
 #   --local              build from source instead of downloading (requires Rust + cargo-tauri)
 #   --prefix=PATH        install root (default: ~/.local)
 #   --version=TAG        pin a release tag (default: latest)
-#   --repo=OWNER/NAME    override GitHub repo (default: USER/bleep)
+#   --repo=OWNER/NAME    override GitHub repo (default: tanguc/bleep-ai)
 #   --launch-agent       install LaunchAgent non-interactively (yes)
 #   --no-launch-agent    skip LaunchAgent (no)
 #   -h, --help           print this help and exit 0
 # ============================================================
 
-# --- constants (maintainer: update REPO_OWNER_DEFAULT before first real release) ---
-REPO_OWNER_DEFAULT="USER"
-REPO_NAME_DEFAULT="bleep"
+# --- constants ---
+REPO_OWNER_DEFAULT="tanguc"
+REPO_NAME_DEFAULT="bleep-ai"
 DEFAULT_PREFIX="${HOME}/.local"
 INSTALL_LIB_REL="lib/bleep"
 LAUNCH_AGENT_LABEL="ai.bleep.gateway"
@@ -51,7 +51,7 @@ Options:
   --local              build from source (requires Rust + cargo-tauri toolchain)
   --prefix=PATH        install root (default: ~/.local)
   --version=TAG        pin a specific release tag
-  --repo=OWNER/NAME    override the GitHub repo (default: USER/bleep)
+  --repo=OWNER/NAME    override the GitHub repo (default: tanguc/bleep-ai)
   --launch-agent       install LaunchAgent for gateway auto-start on login
   --no-launch-agent    skip LaunchAgent installation
   -h, --help           show this help
