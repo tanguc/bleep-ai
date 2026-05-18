@@ -534,7 +534,7 @@ def main() -> None:
     project_root = Path(__file__).resolve().parent.parent
 
     ap = argparse.ArgumentParser(description="Autonomous bleep-gateway eval classifier")
-    ap.add_argument("jsonl", nargs="?", default="/tmp/all_requests.jsonl")
+    ap.add_argument("jsonl", nargs="?", default="/tmp/bleep-requests.jsonl")
     ap.add_argument("--rules", default=str(project_root / "rules" / "combined.yaml"))
     ap.add_argument("--no-keywords", action="store_true")
     ap.add_argument("--min-severity", choices=["low", "medium", "high", "critical"], default="medium")

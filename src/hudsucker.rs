@@ -17,6 +17,93 @@ use crate::event_bus;
 use crate::event_bus::{ProxyEvent, RedactedEntry};
 use crate::request_logger;
 
+/// IPv4-only DNS resolver wrapper around hyper_util's GaiResolver.
+///
+/// Drops AAAA results so the connector only ever sees v4 destinations and
+/// creates v4 sockets. See `build_upstream_connector` for why.
+#[derive(Clone)]
+struct Ipv4OnlyResolver(hyper_util::client::legacy::connect::dns::GaiResolver);
+
+impl tower::Service<hyper_util::client::legacy::connect::dns::Name> for Ipv4OnlyResolver {
+    type Response = std::vec::IntoIter<std::net::SocketAddr>;
+    type Error = std::io::Error;
+    type Future = std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<Self::Response, Self::Error>> + Send>,
+    >;
+
+    fn poll_ready(
+        &mut self,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Result<(), Self::Error>> {
+        tower::Service::poll_ready(&mut self.0, cx)
+    }
+
+    fn call(
+        &mut self,
+        name: hyper_util::client::legacy::connect::dns::Name,
+    ) -> Self::Future {
+        let fut = tower::Service::call(&mut self.0, name);
+        Box::pin(async move {
+            let addrs = fut.await?;
+            Ok(addrs.filter(|a| a.is_ipv4()).collect::<Vec<_>>().into_iter())
+        })
+    }
+}
+
+/// Build the upstream HTTPS connector hudsucker uses to dial origin servers.
+///
+/// Forces IPv4-only resolution via a custom DNS wrapper. macOS VPN clients
+/// (Surfshark in particular) routinely break the v6 default route on
+/// connect/disconnect; the gateway would then resolve api.anthropic.com to a
+/// v6 address and hang on a dead route until TCP timeout (~75s). Stripping
+/// AAAA at the resolver layer means the connector only ever creates v4
+/// sockets — Anthropic + all our upstreams have full v4 connectivity.
+fn build_upstream_connector()
+-> impl hyper_util::client::legacy::connect::Connect + Clone + Send + Sync + 'static {
+    use hyper_util::client::legacy::connect::HttpConnector;
+    use hyper_util::client::legacy::connect::dns::GaiResolver;
+    use std::time::Duration;
+
+    let resolver = Ipv4OnlyResolver(GaiResolver::new());
+    let mut http = HttpConnector::new_with_resolver(resolver);
+    http.enforce_http(false);
+    http.set_happy_eyeballs_timeout(None);
+    http.set_connect_timeout(Some(Duration::from_secs(10)));
+    http.set_keepalive(Some(Duration::from_secs(15)));
+
+    let provider = hudsucker::rustls::crypto::aws_lc_rs::default_provider();
+    use hyper_rustls::ConfigBuilderExt;
+    let tls = hudsucker::rustls::ClientConfig::builder_with_provider(Arc::new(provider))
+        .with_safe_default_protocol_versions()
+        .expect("default rustls protocol versions")
+        .with_webpki_roots()
+        .with_no_client_auth();
+
+    hyper_rustls::HttpsConnectorBuilder::new()
+        .with_tls_config(tls)
+        .https_or_http()
+        .enable_http1()
+        .enable_http2()
+        .wrap_connector(http)
+}
+
+/// Build the hyper Client with a short pool idle timeout so stale sockets
+/// (e.g. left over after a VPN toggle / network change) get evicted within
+/// 10s instead of the default 90s. Caps idle connections per host so the
+/// pool can't accumulate dozens of dead sockets between requests.
+fn build_upstream_client_builder() -> hyper_util::client::legacy::Builder {
+    use hyper_util::rt::TokioExecutor;
+    use std::time::Duration;
+
+    let mut b = hyper_util::client::legacy::Client::builder(TokioExecutor::new());
+    // hudsucker's default sets these too; keep parity.
+    b.http1_title_case_headers(true)
+        .http1_preserve_header_case(true)
+        .pool_idle_timeout(Duration::from_secs(10))
+        .pool_max_idle_per_host(8);
+    b
+}
+
 /// convert raw bytes to a loggable serde value
 /// - gzip: decompress first
 /// - valid json: parse into structured value (avoids escaped quotes/newlines)
@@ -78,6 +165,13 @@ struct LogHandler {
     log_file: Arc<String>,
     /// minimum confidence level: "low" | "medium" | "high"
     min_confidence: Arc<String>,
+    /// redactions applied to the in-flight request, consumed by the matching
+    /// response so fakes are restored to originals before the body reaches the
+    /// client. Per hudsucker: each request/response pair runs on the same
+    /// handler instance, so this needs no external keying.
+    pending_redactions: Vec<crate::replacement::Redaction>,
+    /// request_id of the in-flight request, reused for response-side logging
+    pending_request_id: Option<String>,
 }
 
 impl LogHandler {
@@ -171,6 +265,19 @@ impl HttpHandler for LogHandler {
         );
         crate::perf::record("hudsucker.request.content_router", t_router.elapsed());
 
+        // stash the request's redactions so the paired handle_response can
+        // restore real values in the model's reply (which echoes the fakes
+        // it saw). Same handler instance per request/response per hudsucker.
+        self.pending_redactions = redactions.clone();
+        self.pending_request_id = Some(request_id.clone());
+
+        // persist every (fake, original) pair so future responses can still
+        // restore fakes that leaked into files or that came from sessions
+        // predating this gateway run.
+        if !redactions.is_empty() {
+            crate::dictionary::record_batch(&redactions);
+        }
+
         // log original body (before replacement for debugging)
         let t_log = std::time::Instant::now();
         request_logger::log(&serde_json::json!({
@@ -240,6 +347,26 @@ impl HttpHandler for LogHandler {
             http::HeaderValue::from_static("close"),
         );
 
+        // Ask the upstream to skip gzip so the response-side streaming
+        // deanonymizer can operate on plaintext bytes (gzip can't be
+        // decompressed incrementally without buffering, and buffering
+        // defeats SSE streaming UX).
+        //
+        // Why `gzip;q=0` and not `identity`:
+        //   - `identity` means "ONLY identity"; RFC 9110 lets the server
+        //     reject with 406 Not Acceptable.
+        //   - `gzip;q=0` means "anything except gzip" — softer, well-
+        //     established convention in SSE proxy code (nginx `gzip off`,
+        //     http-proxy-middleware, Sourcegraph Cody, etc.).
+        //
+        // NOTE: a non-compliant origin can still ignore this and send gzip.
+        // If we ever see that with Anthropic we'd need a streaming gzip
+        // decoder in StreamingDeanon — not implemented yet.
+        parts.headers.insert(
+            http::header::ACCEPT_ENCODING,
+            http::HeaderValue::from_static("gzip;q=0"),
+        );
+
         let req = Request::from_parts(parts, Body::from(http_body_util::Full::new(replaced_bytes)));
         req.into()
     }
@@ -247,33 +374,85 @@ impl HttpHandler for LogHandler {
     async fn handle_response(&mut self, _ctx: &HttpContext, res: Response<Body>) -> Response<Body> {
         let _g_total = crate::perf::span("hudsucker.response.total");
         let (mut parts, body) = res.into_parts();
-        let t_body = std::time::Instant::now();
-        let bytes = body.collect().await.unwrap().to_bytes();
-        crate::perf::record("hudsucker.response.body_collect", t_body.elapsed());
 
         let content_type = parts
             .headers
             .get(http::header::CONTENT_TYPE)
             .and_then(|v| v.to_str().ok())
             .map(|s| s.to_string());
+
+        // SSE responses (Anthropic v1/messages) are streamed: hudsucker holds
+        // off forwarding to the client until we return, and body.collect() can
+        // block for tens of seconds on a long reply. Buffering also defeats
+        // the user's "live tokens" UX. For text/event-stream we wrap the body
+        // in StreamingDeanon and return immediately — bytes get rewritten as
+        // they flow through.
+        let is_sse = content_type
+            .as_deref()
+            .map(|ct| ct.starts_with("text/event-stream"))
+            .unwrap_or(false);
+        if is_sse {
+            let in_flight = std::mem::take(&mut self.pending_redactions);
+            let request_id = self
+                .pending_request_id
+                .take()
+                .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+            let dict_pairs = crate::dictionary::snapshot_pairs();
+            // we forced Accept-Encoding: identity on the way out, so strip
+            // any lingering encoding/length headers from upstream metadata.
+            parts.headers.remove(http::header::CONTENT_ENCODING);
+            parts.headers.remove(http::header::CONTENT_LENGTH);
+
+            let wrapped = crate::streaming_deanon::StreamingDeanon::new(
+                body,
+                &in_flight,
+                &dict_pairs,
+            );
+            // hudsucker's Body only exposes from_stream, so convert our Body
+            // impl into a Stream of Bytes (trailers are dropped — SSE doesn't
+            // use them anyway).
+            let stream = BodyExt::into_data_stream(wrapped);
+
+            event_bus::emit(ProxyEvent::Response {
+                id: request_id,
+                ts: chrono::Utc::now().to_rfc3339(),
+                uri: String::new(),
+                status: parts.status.as_u16(),
+            });
+            return Response::from_parts(parts, Body::from_stream(stream));
+        }
+
+        let t_body = std::time::Instant::now();
+        let bytes = body.collect().await.unwrap().to_bytes();
+        crate::perf::record("hudsucker.response.body_collect", t_body.elapsed());
+
         let content_encoding = parts
             .headers
             .get(http::header::CONTENT_ENCODING)
             .and_then(|v| v.to_str().ok())
             .map(|s| s.to_string());
 
-        let request_id = uuid::Uuid::new_v4().to_string();
-        let content_type_str = content_type.as_deref().unwrap_or("");
+        // restore originals: walk the response and swap fakes back to real
+        // values using BOTH the redactions captured during handle_request AND
+        // the persistent dictionary (covers fakes the model echoes from files
+        // or prior-session conversation context). We never re-run the
+        // anonymizer here — that would mint new fakes for PII the model
+        // legitimately includes in its reply.
+        let in_flight = std::mem::take(&mut self.pending_redactions);
+        let request_id = self
+            .pending_request_id
+            .take()
+            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
-        // SSE and non-SSE both go through process_body — sse_process_full handles per-frame
-        // within the buffered body (hudsucker buffers full response before returning)
         let t_router = std::time::Instant::now();
-        let (replaced_bytes, redactions) = content_router::process_body(
-            content_type.as_deref(),
-            content_encoding.as_deref(),
+        let restored_bytes = content_router::deanonymize_body_with_dictionary(
             bytes.clone(),
+            content_encoding.as_deref(),
+            &in_flight,
+            &crate::dictionary::snapshot_pairs(),
         );
         crate::perf::record("hudsucker.response.content_router", t_router.elapsed());
+        let redactions = in_flight;
 
         let t_log = std::time::Instant::now();
         request_logger::log(&serde_json::json!({
@@ -281,53 +460,46 @@ impl HttpHandler for LogHandler {
             "ts": chrono::Utc::now().to_rfc3339(),
             "status": parts.status.as_u16(),
             "body": body_to_loggable(&bytes),
-            "redactions": redactions.len(),
+            "deanonymized": redactions.len(),
         }));
         crate::perf::record("hudsucker.response.audit_log", t_log.elapsed());
 
-        if !redactions.is_empty() {
-            content_router::update_content_length(&mut parts.headers, replaced_bytes.len(), true);
-
-            let t_audit = std::time::Instant::now();
-            self.write_audit(&request_id, content_type_str, &redactions);
-            crate::perf::record("hudsucker.response.write_audit", t_audit.elapsed());
-
-            let t_db = std::time::Instant::now();
-            crate::stats::record_redactions(
-                crate::stats::Direction::Response,
-                &request_id,
-                &redactions,
-            );
-            crate::perf::record("hudsucker.response.stats_insert", t_db.elapsed());
-
-            let redacted_entries = Self::to_redacted_entries(&redactions);
-            let t_emit = std::time::Instant::now();
-            event_bus::emit(ProxyEvent::Response {
-                id: request_id,
-                ts: chrono::Utc::now().to_rfc3339(),
-                uri: String::new(),
-                status: parts.status.as_u16(),
-            });
-            crate::perf::record("hudsucker.response.event_emit", t_emit.elapsed());
-            // log redacted entries separately — Response event doesn't carry them
-            for entry in redacted_entries {
-                debug!(
-                    "[bleep] response redaction: rule={} fake={}",
-                    entry.rule_id, entry.fake_value
-                );
-            }
-        } else {
-            let t_emit = std::time::Instant::now();
-            event_bus::emit(ProxyEvent::Response {
-                id: request_id,
-                ts: chrono::Utc::now().to_rfc3339(),
-                uri: String::new(),
-                status: parts.status.as_u16(),
-            });
-            crate::perf::record("hudsucker.response.event_emit_empty", t_emit.elapsed());
+        if restored_bytes.len() != bytes.len() {
+            content_router::update_content_length(&mut parts.headers, restored_bytes.len(), true);
         }
 
-        Response::from_parts(parts, Body::from(http_body_util::Full::new(replaced_bytes)))
+        let t_emit = std::time::Instant::now();
+        event_bus::emit(ProxyEvent::Response {
+            id: request_id,
+            ts: chrono::Utc::now().to_rfc3339(),
+            uri: String::new(),
+            status: parts.status.as_u16(),
+        });
+        crate::perf::record("hudsucker.response.event_emit", t_emit.elapsed());
+
+        Response::from_parts(parts, Body::from(http_body_util::Full::new(restored_bytes)))
+    }
+
+    /// only MITM Anthropic traffic — everything else (MCP servers, package
+    /// registries, 1Password, etc.) is tunneled raw without TLS interception.
+    /// avoids the noisy NO_PROXY list and zero overhead for non-target traffic.
+    async fn should_intercept(&mut self, _ctx: &HttpContext, req: &Request<Body>) -> bool {
+        // for CONNECT, the URI is "host:port"; for absolute-form HTTP, it has a host()
+        let host = req
+            .uri()
+            .host()
+            .map(str::to_owned)
+            .or_else(|| {
+                req.uri()
+                    .authority()
+                    .map(|a| a.host().to_owned())
+            })
+            .unwrap_or_default();
+        let should = host == "api.anthropic.com" || host.ends_with(".anthropic.com");
+        if !should {
+            debug!("[bleep] pass-through (no MITM): {host}");
+        }
+        should
     }
 }
 
@@ -387,6 +559,14 @@ pub async fn run_hudsucker(port: u16, log_file: String, min_confidence: String) 
         println!("[stats] redaction history DB at {}", stats_path.display());
     }
 
+    // initialize the persistent fake↔original dictionary. This survives gateway
+    // restarts so fakes that leaked into files / conversation history during
+    // earlier sessions can still be round-tripped.
+    let dict_path = crate::dictionary::default_path();
+    if let Err(e) = crate::dictionary::init(&dict_path) {
+        eprintln!("[dictionary] init failed for {}: {e}", dict_path.display());
+    }
+
     // start the local HTTP stats server for the menu-bar dashboard
     crate::stats_server::start();
 
@@ -405,12 +585,15 @@ pub async fn run_hudsucker(port: u16, log_file: String, min_confidence: String) 
     let handler = LogHandler {
         log_file: Arc::new(log_file),
         min_confidence: Arc::new(min_confidence),
+        pending_redactions: Vec::new(),
+        pending_request_id: None,
     };
 
     let proxy = Proxy::builder()
         .with_addr(SocketAddr::from(([127, 0, 0, 1], port)))
         .with_ca(ca)
-        .with_rustls_connector(aws_lc_rs::default_provider())
+        .with_http_connector(build_upstream_connector())
+        .with_client(build_upstream_client_builder())
         .with_http_handler(handler.clone())
         .with_websocket_handler(handler)
         .with_graceful_shutdown(shutdown_signal())

@@ -609,8 +609,31 @@ function wireSettingsActions() {
     if (kind) status.classList.add(kind);
   };
 
+  // Two-click confirm: window.confirm() is a no-op in the Tauri webview
+  // (no dialog plugin installed), so the action would silently never fire.
+  // First click arms the button; second click within 4s actually runs.
+  const armed = new WeakMap();
+  const originalLabels = new WeakMap();
   const runReset = async (btn, path, confirmMsg, label) => {
-    if (!confirm(confirmMsg)) return;
+    if (armed.get(btn) !== true) {
+      if (!originalLabels.has(btn)) originalLabels.set(btn, btn.textContent);
+      armed.set(btn, true);
+      btn.classList.add("armed");
+      btn.textContent = "Click again to confirm";
+      setStatus(confirmMsg);
+      const t = setTimeout(() => {
+        armed.set(btn, false);
+        btn.classList.remove("armed");
+        btn.textContent = originalLabels.get(btn);
+        setStatus("");
+      }, 4000);
+      btn._disarm = t;
+      return;
+    }
+    clearTimeout(btn._disarm);
+    armed.set(btn, false);
+    btn.classList.remove("armed");
+    btn.textContent = originalLabels.get(btn) ?? btn.textContent;
     const port = await getStatsPort();
     if (!port) { setStatus("gateway not connected", "err"); return; }
     btn.disabled = true;

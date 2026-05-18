@@ -110,6 +110,129 @@ pub fn process_body(
     }
 }
 
+/// like `deanonymize_body` but also consults the persistent dictionary so
+/// fakes from past sessions (e.g. baked into files the model just read) are
+/// restored too. In-flight redactions take precedence over dictionary entries
+/// when the same fake appears in both.
+pub fn deanonymize_body_with_dictionary(
+    body: Bytes,
+    content_encoding: Option<&str>,
+    in_flight: &[crate::replacement::Redaction],
+    dictionary: &[(String, String)],
+) -> Bytes {
+    if in_flight.is_empty() && dictionary.is_empty() {
+        return body;
+    }
+    let _g = crate::perf::span("content_router.deanonymize_body_with_dictionary");
+    let encoding = content_encoding.unwrap_or("").to_ascii_lowercase();
+
+    let (decompressed, was_compressed) = match decompress(&body, &encoding) {
+        Ok(result) => result,
+        Err(e) => {
+            warn!("[bleep] {e}, skipping deanonymize");
+            return body;
+        }
+    };
+
+    // First pass: in-flight redactions (highest fidelity — they include span
+    // metadata and were just minted, so always exact). Anything matched here
+    // is removed from contention for the dictionary pass.
+    let after_in_flight = crate::replacement::deanonymize(decompressed, in_flight);
+
+    // Second pass: dictionary lookup. Skip any fake we already applied so we
+    // don't waste work scanning for it again, and avoid quadratic behaviour
+    // when the dictionary contains thousands of entries.
+    let restored = if dictionary.is_empty() {
+        after_in_flight
+    } else {
+        let in_flight_fakes: std::collections::HashSet<&str> =
+            in_flight.iter().map(|r| r.fake.as_str()).collect();
+        let mut buf = after_in_flight.to_vec();
+        for (fake, original) in dictionary {
+            if in_flight_fakes.contains(fake.as_str()) || fake.is_empty() {
+                continue;
+            }
+            // exact-string replacement; same algorithm as replacement::deanonymize
+            // but inlined to avoid building intermediate Redaction structs.
+            if !buf.windows(fake.len()).any(|w| w == fake.as_bytes()) {
+                continue;
+            }
+            let mut out = Vec::with_capacity(buf.len());
+            let fake_bytes = fake.as_bytes();
+            let original_bytes = original.as_bytes();
+            let mut i = 0;
+            while i < buf.len() {
+                if buf[i..].starts_with(fake_bytes) {
+                    out.extend_from_slice(original_bytes);
+                    i += fake_bytes.len();
+                } else {
+                    out.push(buf[i]);
+                    i += 1;
+                }
+            }
+            buf = out;
+        }
+        Bytes::from(buf)
+    };
+
+    if was_compressed {
+        match recompress(&restored, &encoding) {
+            Ok(recompressed) => Bytes::from(recompressed),
+            Err(e) => {
+                warn!(
+                    "[bleep] recompression failed after deanonymize for {encoding}: {e}, forwarding decompressed bytes"
+                );
+                restored
+            }
+        }
+    } else {
+        restored
+    }
+}
+
+/// reverse of `process_body` for the response path: decompress → exact-string
+/// fake→original substitution (no detection, no regex) → recompress.
+///
+/// caller passes the redactions that were applied to the *corresponding
+/// request*; we walk the response bytes and restore the originals so the
+/// model's reply (which echoes the fakes it saw) carries real values when
+/// it lands on the client.
+pub fn deanonymize_body(
+    body: Bytes,
+    content_encoding: Option<&str>,
+    redactions: &[crate::replacement::Redaction],
+) -> Bytes {
+    if redactions.is_empty() {
+        return body;
+    }
+    let _g = crate::perf::span("content_router.deanonymize_body");
+    let encoding = content_encoding.unwrap_or("").to_ascii_lowercase();
+
+    let (decompressed, was_compressed) = match decompress(&body, &encoding) {
+        Ok(result) => result,
+        Err(e) => {
+            warn!("[bleep] {e}, skipping deanonymize");
+            return body;
+        }
+    };
+
+    let restored = crate::replacement::deanonymize(decompressed, redactions);
+
+    if was_compressed {
+        match recompress(&restored, &encoding) {
+            Ok(recompressed) => Bytes::from(recompressed),
+            Err(e) => {
+                warn!(
+                    "[bleep] recompression failed after deanonymize for {encoding}: {e}, forwarding decompressed bytes"
+                );
+                restored
+            }
+        }
+    } else {
+        restored
+    }
+}
+
 /// update Content-Length header after body modification (INV-03)
 ///
 /// only updates if had_replacements is true and the header already exists.

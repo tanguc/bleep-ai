@@ -17,13 +17,26 @@ use crate::types::rule::ReplacementType;
 /// returns (modified_bytes, redactions) where redactions form the forward map for de-anonymization.
 /// if matches is empty, returns (body, vec![]) with no allocation.
 pub fn apply(body: Bytes, matches: Vec<Match>) -> (Bytes, Vec<Redaction>) {
+    let mut dedup: HashMap<Vec<u8>, String> = HashMap::new();
+    apply_with_dedup(body, matches, &mut dedup)
+}
+
+/// like `apply` but shares the dedup map across calls so the same original
+/// produces the same fake across multiple invocations within one request
+/// (e.g. when the JSON walker calls into apply for each string leaf).
+/// without this, the same email in different JSON fields would mint a fresh
+/// fake every time, leaving the upstream model unable to tell they refer to
+/// the same person and breaking response-side de-anonymization for all but
+/// one of them.
+pub fn apply_with_dedup(
+    body: Bytes,
+    matches: Vec<Match>,
+    dedup: &mut HashMap<Vec<u8>, String>,
+) -> (Bytes, Vec<Redaction>) {
     // a. early return
     if matches.is_empty() {
         return (body, vec![]);
     }
-
-    // b. per-request dedup map keyed on raw matched bytes
-    let mut dedup: HashMap<Vec<u8>, String> = HashMap::new();
 
     // c. mutable buffer
     let mut buffer: Vec<u8> = body.into();
@@ -37,9 +50,20 @@ pub fn apply(body: Bytes, matches: Vec<Match>) -> (Bytes, Vec<Redaction>) {
             continue;
         }
 
-        // dedup: same raw bytes -> same fake
+        // dedup: same raw bytes -> same fake. Order of preference:
+        //   1. dedup map (same fake earlier in this request)
+        //   2. persistent dictionary reverse lookup (same fake we minted in a
+        //      previous request — stable across the entire deployment, so the
+        //      model only ever sees one fake per real value and round-tripping
+        //      converges instead of producing a new fake every turn)
+        //   3. generate a fresh one (first sighting ever)
         let fake = if let Some(cached) = dedup.get(&m.raw) {
             cached.clone()
+        } else if let Some(persisted) = crate::dictionary::lookup_by_original(
+            &String::from_utf8_lossy(&m.raw),
+        ) {
+            dedup.insert(m.raw.clone(), persisted.clone());
+            persisted
         } else {
             let rt_str = replacement_type_str(&m.rule.replacement_type);
             let generated = replacers::generate(rt_str, &m.rule.id, &m.raw);
@@ -113,8 +137,12 @@ pub fn json_replace(body: Bytes) -> (Bytes, Vec<Redaction>) {
         Err(_) => return (body, vec![]),
     };
 
+    // single dedup map for the whole body: same original anywhere in the
+    // request becomes the same fake everywhere, so the upstream model can
+    // recognise it as one entity and response-side deanonymize covers it.
+    let mut dedup: HashMap<Vec<u8>, String> = HashMap::new();
     let mut all_redactions: Vec<Redaction> = Vec::new();
-    walk_json_value(&mut root, &mut all_redactions);
+    walk_json_value(&mut root, &mut all_redactions, &mut dedup);
 
     match serde_json::to_vec(&root) {
         Ok(new_bytes) => (Bytes::from(new_bytes), all_redactions),
@@ -122,7 +150,11 @@ pub fn json_replace(body: Bytes) -> (Bytes, Vec<Redaction>) {
     }
 }
 
-fn walk_json_value(value: &mut serde_json::Value, redactions: &mut Vec<Redaction>) {
+fn walk_json_value(
+    value: &mut serde_json::Value,
+    redactions: &mut Vec<Redaction>,
+    dedup: &mut HashMap<Vec<u8>, String>,
+) {
     match value {
         serde_json::Value::String(s) => {
             // skip embedded binary payloads (data URLs): scanning corrupts the base64
@@ -136,14 +168,14 @@ fn walk_json_value(value: &mut serde_json::Value, redactions: &mut Vec<Redaction
             // scan_field applies per-rule matching without the combined AhoCorasick gate.
             let matches = crate::detection::scan_field(&bytes);
             if !matches.is_empty() {
-                let (replaced, mut new_redactions) = apply(bytes, matches);
+                let (replaced, mut new_redactions) = apply_with_dedup(bytes, matches, dedup);
                 *s = String::from_utf8_lossy(&replaced).into_owned();
                 redactions.append(&mut new_redactions);
             }
         }
         serde_json::Value::Array(arr) => {
             for item in arr.iter_mut() {
-                walk_json_value(item, redactions);
+                walk_json_value(item, redactions, dedup);
             }
         }
         serde_json::Value::Object(map) => {
@@ -153,7 +185,7 @@ fn walk_json_value(value: &mut serde_json::Value, redactions: &mut Vec<Redaction
                 return;
             }
             for val in map.values_mut() {
-                walk_json_value(val, redactions);
+                walk_json_value(val, redactions, dedup);
             }
         }
         _ => {} // numbers, bools, null — not scanned

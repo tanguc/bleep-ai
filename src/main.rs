@@ -1,6 +1,7 @@
 mod content_router;
 mod detection;
 mod devmode;
+mod dictionary;
 mod event_bus;
 mod hudsucker;
 mod logging;
@@ -11,6 +12,7 @@ mod replacement;
 mod request_logger;
 mod stats;
 mod stats_server;
+mod streaming_deanon;
 mod types;
 
 use clap::Parser;

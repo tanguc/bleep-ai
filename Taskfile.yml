@@ -314,7 +314,7 @@ tasks:
       - cargo run --release --bin {{.BIN}} -- {{.CLI_ARGS}}
 
   eval:
-    desc: batch scan /tmp/all_requests.jsonl for missed redactions against combined.yaml
+    desc: batch scan /tmp/bleep-requests.jsonl for missed redactions against combined.yaml
     cmds:
       - python3 scripts/eval-missed-redactions.py {{.CLI_ARGS}}
 

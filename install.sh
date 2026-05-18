@@ -31,6 +31,7 @@ VERSION_OVERRIDE=""
 REPO_OWNER="${REPO_OWNER_DEFAULT}"
 REPO_NAME="${REPO_NAME_DEFAULT}"
 LAUNCH_AGENT_CHOICE="ask"   # ask | yes | no
+OVERRIDE_CLAUDE=1           # 1=install claude shim | 0=skip
 DO_UNINSTALL=0
 DO_LOCAL=0
 
@@ -54,11 +55,13 @@ Options:
   --repo=OWNER/NAME    override the GitHub repo (default: tanguc/bleep-ai)
   --launch-agent       install LaunchAgent for gateway auto-start on login
   --no-launch-agent    skip LaunchAgent installation
+  --no-override-claude skip installing the claude shim (override is on by default)
   -h, --help           show this help
 
 Environment:
   BLEEP_LAUNCH_AGENT=1   same as --launch-agent
   BLEEP_LAUNCH_AGENT=0   same as --no-launch-agent
+  BLEEP_OVERRIDE_CLAUDE=0  same as --no-override-claude
 EOF
   exit 0
 }
@@ -76,6 +79,7 @@ for arg in "$@"; do
     --repo=*)            raw="${arg#--repo=}"; REPO_OWNER="${raw%%/*}"; REPO_NAME="${raw#*/}" ;;
     --launch-agent)      LAUNCH_AGENT_CHOICE="yes" ;;
     --no-launch-agent)   LAUNCH_AGENT_CHOICE="no" ;;
+    --no-override-claude) OVERRIDE_CLAUDE=0 ;;
     -h|--help)           usage ;;
     *) die "unknown option: $arg  (try --help)" ;;
   esac
@@ -84,6 +88,7 @@ done
 # env-var overrides for non-interactive automation
 if [ "${BLEEP_LAUNCH_AGENT:-}" = "1" ]; then LAUNCH_AGENT_CHOICE="yes"; fi
 if [ "${BLEEP_LAUNCH_AGENT:-}" = "0" ]; then LAUNCH_AGENT_CHOICE="no"; fi
+if [ "${BLEEP_OVERRIDE_CLAUDE:-}" = "0" ]; then OVERRIDE_CLAUDE=0; fi
 
 # ============================================================
 # Platform guard
@@ -213,6 +218,38 @@ PLIST
   fi
 }
 
+install_claude_override() {
+  # resolve the real claude binary: follow symlinks so we store the actual
+  # executable, not a chain that might later point back to our shim.
+  local claude_on_path real_claude
+  claude_on_path="$(command -v claude 2>/dev/null || true)"
+  if [ -z "$claude_on_path" ]; then
+    log "warning: 'claude' not found on PATH — skipping claude override"
+    return
+  fi
+  real_claude="$(readlink -f "$claude_on_path" 2>/dev/null || realpath "$claude_on_path" 2>/dev/null || echo "$claude_on_path")"
+  # if the resolved path already is our wrapper, nothing to do
+  if [ "$real_claude" = "${PREFIX}/${INSTALL_LIB_REL}/bleep-wrapper.sh" ]; then
+    log "claude override already in place"
+    return
+  fi
+
+  # store the real path so the wrapper can bypass the shim on future launches
+  printf '%s' "$real_claude" > "${PREFIX}/${INSTALL_LIB_REL}/.claude-path"
+  chmod 0644 "${PREFIX}/${INSTALL_LIB_REL}/.claude-path"
+
+  # ad-hoc re-sign — claude auto-updates frequently ship unsigned binaries
+  if have codesign; then
+    log "signing $real_claude"
+    codesign --force -s - "$real_claude" 2>/dev/null \
+      || log "warning: codesign failed — claude may be killed by macOS on launch"
+  fi
+
+  # create claude shim pointing to the bleep wrapper
+  ln -sf "${PREFIX}/${INSTALL_LIB_REL}/bleep-wrapper.sh" "${PREFIX}/bin/claude"
+  log "claude override installed: ${PREFIX}/bin/claude -> bleep-wrapper.sh (real binary: $real_claude)"
+}
+
 uninstall() {
   log "uninstalling Bleep..."
 
@@ -224,8 +261,14 @@ uninstall() {
     log "removed LaunchAgent: $plist"
   fi
 
-  # 2. remove symlink + gateway binary
+  # 2. remove symlinks + gateway binary (claude shim only if it points to us)
   rm -f "${PREFIX}/bin/bleep" "${PREFIX}/bin/bleep-gateway"
+  local claude_link="${PREFIX}/bin/claude"
+  if [ -L "$claude_link" ] && \
+     [ "$(readlink "$claude_link")" = "${PREFIX}/${INSTALL_LIB_REL}/bleep-wrapper.sh" ]; then
+    rm -f "$claude_link"
+    log "removed claude override: $claude_link"
+  fi
   log "removed binaries from ${PREFIX}/bin"
 
   # 3. remove install lib tree (wrapper, cert.pem, .version)
@@ -247,6 +290,7 @@ uninstall() {
 print_summary() {
   local app_path="${1:-unknown}"
   local la_status="${2:-skipped}"
+  local claude_status="${3:-skipped}"
   cat >&2 <<SUMMARY
 
   Bleep ${VERSION} installed successfully!
@@ -256,6 +300,7 @@ print_summary() {
     bleep command  : ${PREFIX}/bin/bleep  (symlink)
     wrapper script : ${PREFIX}/${INSTALL_LIB_REL}/bleep-wrapper.sh
     CA cert        : ${PREFIX}/${INSTALL_LIB_REL}/src/cert.pem
+    claude override: ${claude_status}
     app bundle     : ${app_path}
     LaunchAgent    : ${la_status}
 
@@ -338,7 +383,7 @@ main() {
     exit 0
   fi
 
-  local TARGET VERSION TMP="" APP_PATH LA_STATUS="skipped"
+  local TARGET VERSION TMP="" APP_PATH LA_STATUS="skipped" CLAUDE_STATUS="skipped"
   trap 'rm -rf "${TMP:-}"' EXIT
 
   TARGET=$(detect_target)
@@ -350,6 +395,10 @@ main() {
     build_local_artifacts
     install_gateway_local
     APP_PATH=$(install_app_bundle_local)
+    if [ "$OVERRIDE_CLAUDE" = "1" ]; then
+      install_claude_override
+      CLAUDE_STATUS="${PREFIX}/bin/claude (shim)"
+    fi
     case "$LAUNCH_AGENT_CHOICE" in
       yes) install_launch_agent; LA_STATUS="${HOME}/Library/LaunchAgents/${LAUNCH_AGENT_PLIST_NAME}" ;;
       no)  log "skipping LaunchAgent" ;;
@@ -365,7 +414,7 @@ main() {
         fi
         ;;
     esac
-    print_summary "$APP_PATH" "$LA_STATUS"
+    print_summary "$APP_PATH" "$LA_STATUS" "$CLAUDE_STATUS"
     return
   fi
 
@@ -399,6 +448,10 @@ main() {
 
   install_gateway_archive
   APP_PATH=$(install_app_bundle)
+  if [ "$OVERRIDE_CLAUDE" = "1" ]; then
+    install_claude_override
+    CLAUDE_STATUS="${PREFIX}/bin/claude (shim)"
+  fi
 
   # LaunchAgent dispatch
   case "$LAUNCH_AGENT_CHOICE" in
@@ -427,7 +480,7 @@ main() {
       ;;
   esac
 
-  print_summary "$APP_PATH" "$LA_STATUS"
+  print_summary "$APP_PATH" "$LA_STATUS" "$CLAUDE_STATUS"
 }
 
 main "$@"
