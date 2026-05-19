@@ -1,0 +1,42 @@
+name: Prune Actions caches
+
+on:
+  schedule:
+    - cron: '0 4 * * 0'  # weekly Sunday 04:00 UTC
+  workflow_dispatch:
+
+permissions:
+  actions: write
+
+jobs:
+  prune:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete caches older than 7 days
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          cutoff=$(date -u -d '7 days ago' +%s)
+          deleted=0
+          # paginate all caches
+          page=1
+          while :; do
+            resp=$(gh api "/repos/${REPO}/actions/caches?per_page=100&page=${page}")
+            count=$(echo "$resp" | jq '.actions_caches | length')
+            [ "$count" -eq 0 ] && break
+            echo "$resp" | jq -c '.actions_caches[]' | while read -r row; do
+              id=$(echo "$row" | jq -r .id)
+              last=$(echo "$row" | jq -r .last_accessed_at)
+              last_ts=$(date -u -d "$last" +%s)
+              key=$(echo "$row" | jq -r .key)
+              if [ "$last_ts" -lt "$cutoff" ]; then
+                echo "deleting cache $id (last accessed $last) key=$key"
+                gh api -X DELETE "/repos/${REPO}/actions/caches/${id}" || true
+                deleted=$((deleted+1))
+              fi
+            done
+            page=$((page+1))
+          done
+          echo "pruned $deleted caches"
