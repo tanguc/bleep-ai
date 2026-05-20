@@ -24,6 +24,8 @@ DEFAULT_PREFIX="${HOME}/.local"
 INSTALL_LIB_REL="lib/bleep"
 LAUNCH_AGENT_LABEL="ai.bleep.gateway"
 LAUNCH_AGENT_PLIST_NAME="ai.bleep.gateway.plist"
+RESIGN_AGENT_LABEL="ai.bleep.resign"
+RESIGN_AGENT_PLIST_NAME="ai.bleep.resign.plist"
 
 # --- defaults ---
 PREFIX="${DEFAULT_PREFIX}"
@@ -250,15 +252,128 @@ install_claude_override() {
   log "claude override installed: ${PREFIX}/bin/claude -> bleep-wrapper.sh (real binary: $real_claude)"
 }
 
+# Install a LaunchAgent that ad-hoc re-signs self-updating binaries the moment
+# they change on disk. claude's auto-updater ships unsigned binaries; macOS
+# AMFI then SIGKILLs them on Apple Silicon. The wrapper signs at launch time,
+# but that only covers wrapper-launched claude — this agent covers background
+# updates and any other self-updating binary listed in .watched-binaries.
+install_resign_agent() {
+  local lib_dir="${PREFIX}/${INSTALL_LIB_REL}"
+  local resign_script="${lib_dir}/bleep-resign.sh"
+  local watch_file="${lib_dir}/.watched-binaries"
+  local claude_path_file="${lib_dir}/.claude-path"
+  local real_claude="" versions_dir=""
+  [ -f "$claude_path_file" ] && real_claude="$(cat "$claude_path_file" 2>/dev/null || true)"
+  # claude keeps versions under .../claude/versions/<semver> — watch that dir
+  # so the agent fires when an auto-update drops a new version executable.
+  case "$real_claude" in
+    */versions/*) versions_dir="${real_claude%/versions/*}/versions" ;;
+    *)            versions_dir="${HOME}/.local/share/claude/versions" ;;
+  esac
+
+  # the resigner script — verifies each watched binary, ad-hoc signs if broken
+  cat > "$resign_script" <<'RESIGN'
+#!/usr/bin/env bash
+# bleep-resign.sh — ad-hoc re-sign self-updating binaries macOS would SIGKILL.
+# Invoked by the ai.bleep.resign LaunchAgent on WatchPaths change + at login.
+set -u
+LIB_DIR="$(cd -P "$(dirname "$0")" && pwd)"
+LOG=/tmp/bleep-resign.log
+ts() { date '+%Y-%m-%dT%H:%M:%S'; }
+
+resign_one() {
+  local bin="$1"
+  [ -n "$bin" ] && [ -f "$bin" ] && [ -x "$bin" ] || return 0
+  codesign -v "$bin" >/dev/null 2>&1 && return 0   # already valid
+  if codesign --force -s - "$bin" >>"$LOG" 2>&1; then
+    echo "$(ts) re-signed $bin" >>"$LOG"
+  else
+    echo "$(ts) FAILED to sign $bin" >>"$LOG"
+  fi
+}
+
+# claude — sign every version present (cheap, also covers rollback). Derive
+# the versions dir from the stored path written by the wrapper/installer.
+stored="$(cat "$LIB_DIR/.claude-path" 2>/dev/null || true)"
+case "$stored" in
+  */versions/*) versions_dir="${stored%/versions/*}/versions" ;;
+  *)            versions_dir="$HOME/.local/share/claude/versions" ;;
+esac
+if [ -d "$versions_dir" ]; then
+  for v in "$versions_dir"/*; do resign_one "$v"; done
+fi
+
+# extra self-updating binaries — one absolute path per line, '#' comments ok
+if [ -f "$LIB_DIR/.watched-binaries" ]; then
+  while IFS= read -r line; do
+    case "$line" in ''|\#*) continue ;; esac
+    resign_one "$line"
+  done < "$LIB_DIR/.watched-binaries"
+fi
+RESIGN
+  chmod 0755 "$resign_script"
+
+  # stable path for WatchPaths to watch (users append extra binaries here)
+  if [ ! -f "$watch_file" ]; then
+    cat > "$watch_file" <<'WATCHHDR'
+# bleep watched binaries — one absolute path per line.
+# The ai.bleep.resign agent ad-hoc re-signs these whenever they change.
+# Add other self-updating tools here (claude is handled automatically).
+WATCHHDR
+  fi
+
+  local plist="${HOME}/Library/LaunchAgents/${RESIGN_AGENT_PLIST_NAME}"
+  mkdir -p "${HOME}/Library/LaunchAgents"
+  {
+    cat <<PLIST_HEAD
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>${RESIGN_AGENT_LABEL}</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>${resign_script}</string>
+  </array>
+  <key>WatchPaths</key>
+  <array>
+    <string>${watch_file}</string>
+PLIST_HEAD
+    # watch the versions/ directory — fires when a new version appears
+    [ -d "$versions_dir" ] && printf '    <string>%s</string>\n' "$versions_dir"
+    cat <<PLIST_TAIL
+  </array>
+  <key>RunAtLoad</key><true/>
+  <key>StandardOutPath</key><string>/tmp/bleep-resign.log</string>
+  <key>StandardErrorPath</key><string>/tmp/bleep-resign.log</string>
+</dict>
+</plist>
+PLIST_TAIL
+  } > "$plist"
+
+  launchctl bootout "gui/$(id -u)" "$plist" 2>/dev/null || true
+  if launchctl bootstrap "gui/$(id -u)" "$plist"; then
+    log "resign agent installed: ${RESIGN_AGENT_LABEL} (watches ${versions_dir})"
+  else
+    log "warning: resign agent bootstrap failed — plist at $plist (load manually)"
+  fi
+}
+
 uninstall() {
   log "uninstalling Bleep..."
 
-  # 1. unload + remove LaunchAgent if present
+  # 1. unload + remove LaunchAgents if present
   local plist="${HOME}/Library/LaunchAgents/${LAUNCH_AGENT_PLIST_NAME}"
   if [ -f "$plist" ]; then
     launchctl bootout "gui/$(id -u)" "$plist" 2>/dev/null || true
     rm -f "$plist"
     log "removed LaunchAgent: $plist"
+  fi
+  local resign_plist="${HOME}/Library/LaunchAgents/${RESIGN_AGENT_PLIST_NAME}"
+  if [ -f "$resign_plist" ]; then
+    launchctl bootout "gui/$(id -u)" "$resign_plist" 2>/dev/null || true
+    rm -f "$resign_plist"
+    log "removed resign agent: $resign_plist"
   fi
 
   # 2. remove symlinks + gateway binary (claude shim only if it points to us)
@@ -397,6 +512,7 @@ main() {
     APP_PATH=$(install_app_bundle_local)
     if [ "$OVERRIDE_CLAUDE" = "1" ]; then
       install_claude_override
+      install_resign_agent
       CLAUDE_STATUS="${PREFIX}/bin/claude (shim)"
     fi
     case "$LAUNCH_AGENT_CHOICE" in
@@ -450,6 +566,7 @@ main() {
   APP_PATH=$(install_app_bundle)
   if [ "$OVERRIDE_CLAUDE" = "1" ]; then
     install_claude_override
+    install_resign_agent
     CLAUDE_STATUS="${PREFIX}/bin/claude (shim)"
   fi
 

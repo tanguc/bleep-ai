@@ -135,11 +135,35 @@ cleanup() {
 
 trap cleanup INT TERM
 
-# locate real claude binary: prefer path stored at install time (avoids re-entering
-# this wrapper when $PREFIX/bin/claude is itself a symlink to us), then fall back
-# to whatever is on PATH.
+# Locate the real claude binary.
+#
+# claude's native installer keeps every version as its own ~200MB executable
+# under .../claude/versions/<semver> and does NOT maintain a stable "current"
+# symlink (and bleep overwrote the only PATH entry with this wrapper). So a
+# path cached at install time goes stale on the very next auto-update.
+# Resolve the newest version dynamically on every launch instead.
 _CLAUDE_BIN="${BLEEP_CLAUDE_BIN:-}"
 _CLAUDE_PATH_FILE="$SCRIPT_DIR/.claude-path"
+
+# pick the highest-versioned executable in claude's versions/ directory.
+_resolve_newest_claude() {
+    local stored versions_dir newest
+    stored="$(cat "$_CLAUDE_PATH_FILE" 2>/dev/null || true)"
+    case "$stored" in
+        */versions/*) versions_dir="${stored%/versions/*}/versions" ;;
+        *)            versions_dir="$HOME/.local/share/claude/versions" ;;
+    esac
+    [ -d "$versions_dir" ] || return 1
+    # entries are bare semver filenames — version-sort, take the last
+    newest="$(ls -1 "$versions_dir" 2>/dev/null | sort -V | tail -1)"
+    [ -n "$newest" ] && [ -x "$versions_dir/$newest" ] || return 1
+    printf '%s' "$versions_dir/$newest"
+}
+
+if [ -z "$_CLAUDE_BIN" ]; then
+    _CLAUDE_BIN="$(_resolve_newest_claude || true)"
+fi
+# fall back to the stored path, then PATH, if dynamic resolution found nothing
 if [ -z "$_CLAUDE_BIN" ] && [ -f "$_CLAUDE_PATH_FILE" ]; then
     _CLAUDE_BIN="$(cat "$_CLAUDE_PATH_FILE")"
     [ -x "$_CLAUDE_BIN" ] || { echo "[bleep] warning: stored claude path '$_CLAUDE_BIN' not executable — falling back to PATH" >&2; _CLAUDE_BIN=""; }
@@ -148,16 +172,29 @@ if [ -z "$_CLAUDE_BIN" ]; then
     _CLAUDE_BIN="$(command -v claude 2>/dev/null || true)"
 fi
 [ -n "$_CLAUDE_BIN" ] || { echo "[bleep] error: claude binary not found" >&2; exit 1; }
-# re-sign only when the binary changed since last sign (mtime-based cache)
+# keep .claude-path fresh so the resign LaunchAgent watches the live version
+if [ -n "$_CLAUDE_BIN" ] && [ "$(cat "$_CLAUDE_PATH_FILE" 2>/dev/null || true)" != "$_CLAUDE_BIN" ]; then
+    printf '%s' "$_CLAUDE_BIN" > "$_CLAUDE_PATH_FILE" 2>/dev/null || true
+fi
+# Ad-hoc re-sign before exec. claude's auto-updater ships unsigned binaries
+# and macOS AMFI SIGKILLs unsigned executables on Apple Silicon (this is the
+# `[1] killed claude` you get with no other output). No mtime cache — a
+# stale or silently-failed cache entry is exactly how an unsigned binary
+# slips through. We verify first and only sign when the signature is
+# missing/broken, so a properly-signed update keeps its real signature.
 if command -v codesign >/dev/null 2>&1; then
-    _SIGN_CACHE="/tmp/bleep-codesign-$(echo "$_CLAUDE_BIN" | md5).mtime"
-    _BIN_MTIME="$(stat -f '%m' "$_CLAUDE_BIN" 2>/dev/null || echo 0)"
-    if [ "$(cat "$_SIGN_CACHE" 2>/dev/null)" != "$_BIN_MTIME" ]; then
-        codesign --force -s - "$_CLAUDE_BIN" 2>/dev/null \
-            && echo "$_BIN_MTIME" > "$_SIGN_CACHE" \
-            || echo "[bleep] warning: codesign failed — claude may be killed by macOS" >&2
+    if ! codesign -v "$_CLAUDE_BIN" >/dev/null 2>&1; then
+        _SIGN_ERR="$(codesign --force -s - "$_CLAUDE_BIN" 2>&1)" || true
+        if codesign -v "$_CLAUDE_BIN" >/dev/null 2>&1; then
+            echo "[bleep] re-signed claude (auto-update left it unsigned)" >&2
+        else
+            echo "[bleep] error: codesign failed — claude would be killed by macOS" >&2
+            [ -n "${_SIGN_ERR:-}" ] && echo "[bleep]   codesign: $_SIGN_ERR" >&2
+            echo "[bleep]   binary: $_CLAUDE_BIN" >&2
+            exit 1
+        fi
+        unset _SIGN_ERR
     fi
-    unset _SIGN_CACHE _BIN_MTIME
 fi
 # guard against resolving back to ourselves (would cause an infinite fork loop)
 _CLAUDE_BIN_REAL="$(cd -P "$(dirname "$_CLAUDE_BIN")" 2>/dev/null && pwd)/$(basename "$_CLAUDE_BIN")"
