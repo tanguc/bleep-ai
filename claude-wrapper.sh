@@ -12,6 +12,15 @@ while [ -L "$_SOURCE" ]; do
   esac
 done
 SCRIPT_DIR="$(cd -P "$(dirname "$_SOURCE")" && pwd)"
+
+# ── logging ──────────────────────────────────────────────────────────────────
+# Everything the wrapper decides is appended to /tmp/bleep-wrapper.log so a
+# failed/odd launch can be diagnosed after the fact. _say also echoes to the
+# terminal (stderr); _wlog is log-file only for the chattier internal steps.
+_WLOG=/tmp/bleep-wrapper.log
+_wlog() { echo "$(date '+%Y-%m-%dT%H:%M:%S') [$$] $*" >>"$_WLOG" 2>/dev/null || true; }
+_say()  { echo "[bleep] $*" >&2; _wlog "$*"; }
+_wlog "==== wrapper invoked: args=[$*] cwd=$(pwd)"
 # Trust bleep's CA across every TLS stack any claude subprocess might use:
 #   NODE_EXTRA_CA_CERTS — Node / undici / claude's own bundled HTTP client
 #   BUN_CA_BUNDLE_PATH  — Bun's native TLS path (claude is a bun-compiled binary)
@@ -87,25 +96,28 @@ _evict_hung_gateway() {
     local pid
     pid="$(lsof -ti tcp:9190 2>/dev/null | head -1)"
     [ -n "$pid" ] || return 0
-    echo "[bleep] port 9190 held by PID $pid (not healthy) — sending SIGTERM" >&2
+    _say "port 9190 held by PID $pid (not healthy) — sending SIGTERM"
     kill -TERM "$pid" 2>/dev/null || true
     local waited=0
     while [ "$waited" -lt 30 ]; do
         sleep 0.1; waited=$((waited + 1))
-        nc -z 127.0.0.1 9190 2>/dev/null || return 0   # port released
+        nc -z 127.0.0.1 9190 2>/dev/null || { _wlog "hung gateway released port after ${waited}00ms"; return 0; }
     done
-    echo "[bleep] SIGTERM ignored, sending SIGKILL to PID $pid" >&2
+    _say "SIGTERM ignored, sending SIGKILL to PID $pid"
     kill -KILL "$pid" 2>/dev/null || true
 }
 
-if ! _gateway_running; then
+if _gateway_running; then
+    _wlog "gateway already running and healthy"
+else
     _evict_hung_gateway
     if [ -x "$_GATEWAY_BIN" ]; then
-        echo "[bleep] gateway not running — starting daemon..." >&2
+        _say "gateway not running — starting daemon ($_GATEWAY_BIN)"
         nohup "$_GATEWAY_BIN" \
             >>/tmp/bleep-gateway.out.log \
             2>>/tmp/bleep-gateway.err.log \
             </dev/null &
+        _wlog "spawned gateway pid=$!"
         # wait up to 5s for gateway to be ready
         _waited=0
         while [ "$_waited" -lt 50 ]; do
@@ -113,19 +125,22 @@ if ! _gateway_running; then
             _waited=$((_waited + 1))
             _gateway_running && break
         done
-        if ! _gateway_running; then
-            echo "[bleep] warning: gateway did not start in 5s — proceeding anyway" >&2
+        if _gateway_running; then
+            _say "gateway up after ${_waited}00ms"
+        else
+            _say "warning: gateway did not start in 5s — proceeding anyway"
         fi
     else
-        echo "[bleep] warning: bleep-gateway not found — running without proxy" >&2
+        _say "warning: bleep-gateway not found — running without proxy"
     fi
 fi
 unset _GATEWAY_BIN _waited
 
-echo "[bleep] active — proxying via localhost:9190" >&2
+_say "active — proxying via localhost:9190"
 
 # ── forward signals to the child process ─────────────────────────────────────
 cleanup() {
+    _wlog "received INT/TERM — forwarding to child ${CHILD_PID:-<none>}"
     if [ -n "$CHILD_PID" ]; then
         kill -TERM "$CHILD_PID" 2>/dev/null
         wait "$CHILD_PID" 2>/dev/null
@@ -162,19 +177,28 @@ _resolve_newest_claude() {
 
 if [ -z "$_CLAUDE_BIN" ]; then
     _CLAUDE_BIN="$(_resolve_newest_claude || true)"
+    [ -n "$_CLAUDE_BIN" ] && _wlog "resolved claude via newest-version scan: $_CLAUDE_BIN"
 fi
 # fall back to the stored path, then PATH, if dynamic resolution found nothing
 if [ -z "$_CLAUDE_BIN" ] && [ -f "$_CLAUDE_PATH_FILE" ]; then
     _CLAUDE_BIN="$(cat "$_CLAUDE_PATH_FILE")"
-    [ -x "$_CLAUDE_BIN" ] || { echo "[bleep] warning: stored claude path '$_CLAUDE_BIN' not executable — falling back to PATH" >&2; _CLAUDE_BIN=""; }
+    if [ -x "$_CLAUDE_BIN" ]; then
+        _wlog "resolved claude via stored .claude-path: $_CLAUDE_BIN"
+    else
+        _say "warning: stored claude path '$_CLAUDE_BIN' not executable — falling back to PATH"
+        _CLAUDE_BIN=""
+    fi
 fi
 if [ -z "$_CLAUDE_BIN" ]; then
     _CLAUDE_BIN="$(command -v claude 2>/dev/null || true)"
+    [ -n "$_CLAUDE_BIN" ] && _wlog "resolved claude via PATH: $_CLAUDE_BIN"
 fi
-[ -n "$_CLAUDE_BIN" ] || { echo "[bleep] error: claude binary not found" >&2; exit 1; }
+[ -n "$_CLAUDE_BIN" ] || { _say "error: claude binary not found"; exit 1; }
 # keep .claude-path fresh so the resign LaunchAgent watches the live version
 if [ -n "$_CLAUDE_BIN" ] && [ "$(cat "$_CLAUDE_PATH_FILE" 2>/dev/null || true)" != "$_CLAUDE_BIN" ]; then
-    printf '%s' "$_CLAUDE_BIN" > "$_CLAUDE_PATH_FILE" 2>/dev/null || true
+    printf '%s' "$_CLAUDE_BIN" > "$_CLAUDE_PATH_FILE" 2>/dev/null \
+        && _wlog "updated .claude-path -> $_CLAUDE_BIN" \
+        || _wlog "warning: could not write .claude-path"
 fi
 # Ad-hoc re-sign before exec. claude's auto-updater ships unsigned binaries
 # and macOS AMFI SIGKILLs unsigned executables on Apple Silicon (this is the
@@ -183,14 +207,17 @@ fi
 # slips through. We verify first and only sign when the signature is
 # missing/broken, so a properly-signed update keeps its real signature.
 if command -v codesign >/dev/null 2>&1; then
-    if ! codesign -v "$_CLAUDE_BIN" >/dev/null 2>&1; then
+    if codesign -v "$_CLAUDE_BIN" >/dev/null 2>&1; then
+        _wlog "codesign: signature already valid — no re-sign needed"
+    else
+        _wlog "codesign: signature missing/broken — ad-hoc re-signing $_CLAUDE_BIN"
         _SIGN_ERR="$(codesign --force -s - "$_CLAUDE_BIN" 2>&1)" || true
         if codesign -v "$_CLAUDE_BIN" >/dev/null 2>&1; then
-            echo "[bleep] re-signed claude (auto-update left it unsigned)" >&2
+            _say "re-signed claude (auto-update left it unsigned)"
         else
-            echo "[bleep] error: codesign failed — claude would be killed by macOS" >&2
-            [ -n "${_SIGN_ERR:-}" ] && echo "[bleep]   codesign: $_SIGN_ERR" >&2
-            echo "[bleep]   binary: $_CLAUDE_BIN" >&2
+            _say "error: codesign failed — claude would be killed by macOS"
+            [ -n "${_SIGN_ERR:-}" ] && _say "  codesign: $_SIGN_ERR"
+            _say "  binary: $_CLAUDE_BIN"
             exit 1
         fi
         unset _SIGN_ERR
@@ -199,15 +226,17 @@ fi
 # guard against resolving back to ourselves (would cause an infinite fork loop)
 _CLAUDE_BIN_REAL="$(cd -P "$(dirname "$_CLAUDE_BIN")" 2>/dev/null && pwd)/$(basename "$_CLAUDE_BIN")"
 if [ "$_CLAUDE_BIN_REAL" = "$_SOURCE" ]; then
-    echo "[bleep] error: claude resolves to this wrapper — store the real claude path by re-running the installer, or set BLEEP_CLAUDE_BIN=/path/to/real/claude" >&2
+    _say "error: claude resolves to this wrapper — store the real claude path by re-running the installer, or set BLEEP_CLAUDE_BIN=/path/to/real/claude"
     exit 1
 fi
 unset _CLAUDE_BIN_REAL
 unset _CLAUDE_PATH_FILE
 
+_wlog "exec claude: $_CLAUDE_BIN"
 "$_CLAUDE_BIN" "$@" &
 CHILD_PID=$!
 wait "$CHILD_PID"
 EXIT_CODE=$?
 CHILD_PID=
+_wlog "claude exited: code=$EXIT_CODE"
 exit $EXIT_CODE

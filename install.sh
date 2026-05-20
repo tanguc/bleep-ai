@@ -280,36 +280,61 @@ set -u
 LIB_DIR="$(cd -P "$(dirname "$0")" && pwd)"
 LOG=/tmp/bleep-resign.log
 ts() { date '+%Y-%m-%dT%H:%M:%S'; }
+log() { echo "$(ts) [$$] $*" >>"$LOG"; }
+
+# launchd does not tell us which WatchPath fired, so we log the run and the
+# state we observe. RunAtLoad fires once at login; WatchPaths fires on every
+# change to the versions/ dir or .watched-binaries.
+log "==== resign run start (launchd: RunAtLoad or WatchPaths change)"
+
+checked=0 signed=0 skipped=0 failed=0
 
 resign_one() {
   local bin="$1"
-  [ -n "$bin" ] && [ -f "$bin" ] && [ -x "$bin" ] || return 0
-  codesign -v "$bin" >/dev/null 2>&1 && return 0   # already valid
-  if codesign --force -s - "$bin" >>"$LOG" 2>&1; then
-    echo "$(ts) re-signed $bin" >>"$LOG"
+  [ -n "$bin" ] || return 0
+  if [ ! -e "$bin" ]; then log "skip (missing): $bin"; return 0; fi
+  if [ ! -f "$bin" ] || [ ! -x "$bin" ]; then log "skip (not an executable file): $bin"; return 0; fi
+  checked=$((checked + 1))
+  if codesign -v "$bin" >/dev/null 2>&1; then
+    skipped=$((skipped + 1))
+    log "ok (already validly signed): $bin"
+    return 0
+  fi
+  log "unsigned/broken signature - re-signing: $bin"
+  if codesign --force -s - "$bin" >>"$LOG" 2>&1 && codesign -v "$bin" >/dev/null 2>&1; then
+    signed=$((signed + 1))
+    log "re-signed OK: $bin"
   else
-    echo "$(ts) FAILED to sign $bin" >>"$LOG"
+    failed=$((failed + 1))
+    log "ERROR: failed to sign: $bin"
   fi
 }
 
 # claude — sign every version present (cheap, also covers rollback). Derive
 # the versions dir from the stored path written by the wrapper/installer.
 stored="$(cat "$LIB_DIR/.claude-path" 2>/dev/null || true)"
+log "stored claude path: ${stored:-<none>}"
 case "$stored" in
   */versions/*) versions_dir="${stored%/versions/*}/versions" ;;
   *)            versions_dir="$HOME/.local/share/claude/versions" ;;
 esac
 if [ -d "$versions_dir" ]; then
+  log "scanning claude versions dir: $versions_dir"
   for v in "$versions_dir"/*; do resign_one "$v"; done
+else
+  log "claude versions dir not found: $versions_dir"
 fi
 
 # extra self-updating binaries — one absolute path per line, '#' comments ok
 if [ -f "$LIB_DIR/.watched-binaries" ]; then
+  log "scanning .watched-binaries"
   while IFS= read -r line; do
     case "$line" in ''|\#*) continue ;; esac
     resign_one "$line"
   done < "$LIB_DIR/.watched-binaries"
 fi
+
+log "==== resign run done: checked=$checked signed=$signed skipped=$skipped failed=$failed"
 RESIGN
   chmod 0755 "$resign_script"
 
