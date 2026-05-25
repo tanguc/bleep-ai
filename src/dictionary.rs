@@ -196,3 +196,46 @@ pub fn snapshot_pairs() -> Vec<(String, String)> {
 pub fn len() -> usize {
     MAP.get().and_then(|m| m.read().ok()).map(|m| m.len()).unwrap_or(0)
 }
+
+/// Wipe the dictionary: delete every row on disk and clear both in-memory
+/// maps. Returns the number of rows that were on disk.
+///
+/// Caller-visible effects:
+///   - future requests with previously-seen secrets will mint FRESH fakes
+///     (no longer stable across the whole deployment for those secrets);
+///   - in-flight response-side deanonymization that depends on a now-purged
+///     entry will leave that specific fake in the response body. New requests
+///     are unaffected.
+///
+/// Exposed via `POST /dictionary/reset` from the menu-bar GUI. Loopback-only.
+pub fn reset_all() -> u64 {
+    let Some(db) = DB.get() else {
+        return 0;
+    };
+    let conn = match db.lock() {
+        Ok(c) => c,
+        Err(_) => return 0,
+    };
+    let deleted = match conn.execute("DELETE FROM dictionary", []) {
+        Ok(n) => n as u64,
+        Err(e) => {
+            eprintln!("[dictionary] reset_all delete failed: {e}");
+            return 0;
+        }
+    };
+    // best-effort VACUUM so the file shrinks; not fatal if it fails.
+    let _ = conn.execute_batch("VACUUM");
+
+    // clear in-memory maps so the next request sees a clean slate.
+    if let Some(map) = MAP.get() {
+        if let Ok(mut m) = map.write() {
+            m.clear();
+        }
+    }
+    if let Some(rev) = REVERSE.get() {
+        if let Ok(mut r) = rev.write() {
+            r.clear();
+        }
+    }
+    deleted
+}

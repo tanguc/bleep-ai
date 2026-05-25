@@ -7,7 +7,7 @@
 </head>
 <body>
   <aside class="sidebar">
-    <div class="brand">Bleep</div>
+    <div class="brand">Bl<span class="redact">ee</span>p</div>
     <nav>
       <a href="#dashboard" data-route="dashboard">
         <span class="dot"></span>Dashboard
@@ -39,7 +39,7 @@
     </header>
 
     <section class="cards">
-      <div class="card">
+      <div class="card card-hero">
         <div class="card-label">today</div>
         <div class="card-value" id="m-today">0</div>
       </div>
@@ -206,10 +206,14 @@
     </section>
     <section class="panel">
       <h2>Database</h2>
-      <div class="dim settings-hint">destructive — clears local state only, no network calls</div>
+      <p class="settings-note">
+        <span class="settings-note-icon">⚠</span>
+        Destructive — clears local state only. No network calls.
+      </p>
       <div class="settings-actions">
-        <button type="button" id="s-reset-stats" class="chip danger">Reset redaction history</button>
-        <button type="button" id="s-reset-perf" class="chip danger">Reset perf counters</button>
+        <button type="button" id="s-reset-stats" class="btn btn-danger">Reset redaction history</button>
+        <button type="button" id="s-reset-perf" class="btn btn-danger">Reset perf counters</button>
+        <button type="button" id="s-reset-dict" class="btn btn-danger" title="wipe the persistent original→fake dictionary so future requests mint fresh fakes">Reset fake dictionary</button>
       </div>
       <div id="s-reset-status" class="dim small settings-status"></div>
     </section>

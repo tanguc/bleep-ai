@@ -380,7 +380,7 @@ async function refreshDashboard() {
       /** @type {Promise<RuleCount[]>} */     (fetchJson(port, "/stats/rules?limit=10")),
     ]));
     setConnection(true);
-    renderCounter(document.getElementById("m-today"), summary.last_24h);
+    renderCounter(document.getElementById("m-today"), summary.today);
     renderCounter(document.getElementById("m-7d"),    summary.last_7d);
     renderCounter(document.getElementById("m-30d"),   summary.last_30d);
     renderCounter(document.getElementById("m-total"), summary.total);
@@ -599,8 +599,9 @@ function wireSettingsActions() {
   if (settingsActionsWired) return;
   const resetStats = document.getElementById("s-reset-stats");
   const resetPerf = document.getElementById("s-reset-perf");
+  const resetDict = document.getElementById("s-reset-dict");
   const status = document.getElementById("s-reset-status");
-  if (!resetStats || !resetPerf || !status) return;
+  if (!resetStats || !resetPerf || !resetDict || !status) return;
   settingsActionsWired = true;
 
   const setStatus = (msg, kind) => {
@@ -659,6 +660,10 @@ function wireSettingsActions() {
     runReset(resetPerf, "/perf/reset",
       "Reset all perf counters?",
       "perf counters"));
+  resetDict.addEventListener("click", () =>
+    runReset(resetDict, "/dictionary/reset",
+      "Wipe the original→fake dictionary? New requests will mint fresh fakes.",
+      "fake dictionary"));
 }
 
 // ── live tail (cross-route — appends only when dashboard is mounted) ──

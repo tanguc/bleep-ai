@@ -2,7 +2,7 @@
 //!
 //! Bound to 127.0.0.1 only — never listens on a public interface. Routes:
 //!   GET /health             -> { "status": "ok" }
-//!   GET /stats              -> Summary { total, last_24h, last_7d, last_30d }
+//!   GET /stats              -> Summary { total, today, last_7d, last_30d }
 //!   GET /stats/categories   -> [ { category, subcategory, count }, ... ]
 //!   GET /stats/rules?limit  -> [ { rule_id, count }, ... ]   (limit default: 20)
 //!
@@ -121,6 +121,20 @@ async fn get_redactions(
     Json(bleep_events::RedactedPage { rows, next_cursor })
 }
 
+#[derive(Serialize)]
+struct RulesCount {
+    count: usize,
+}
+
+/// GET /rules/count — number of loaded patterns. Cheap accessor that lets
+/// the claude-wrapper banner show the rule count without needing the on-disk
+/// rules file (which it may not be able to find from the install dir).
+async fn get_rules_count() -> Json<RulesCount> {
+    Json(RulesCount {
+        count: crate::patterns::RULES.len(),
+    })
+}
+
 async fn not_found() -> StatusCode {
     StatusCode::NOT_FOUND
 }
@@ -147,6 +161,15 @@ struct PerfResetResp {
 async fn post_perf_reset() -> Json<PerfResetResp> {
     crate::perf::reset();
     Json(PerfResetResp { ok: true })
+}
+
+/// POST /dictionary/reset — wipe the persistent fake-dictionary (originals →
+/// fakes). Loopback-only, no auth. Returns the number of rows deleted.
+async fn post_dictionary_reset() -> Json<ResetResp> {
+    let t0 = Instant::now();
+    let deleted = crate::dictionary::reset_all();
+    log_timing("POST /dictionary/reset", t0, &format!("deleted={deleted}"));
+    Json(ResetResp { deleted })
 }
 
 #[derive(Deserialize)]
@@ -182,10 +205,12 @@ fn router() -> Router {
         .route("/stats", get(get_summary))
         .route("/stats/categories", get(get_categories))
         .route("/stats/rules", get(get_rules))
+        .route("/rules/count", get(get_rules_count))
         .route("/redactions", get(get_redactions))
         .route("/stats/reset", post(post_stats_reset))
         .route("/perf", get(get_perf))
         .route("/perf/reset", post(post_perf_reset))
+        .route("/dictionary/reset", post(post_dictionary_reset))
         .fallback(not_found)
         .layer(cors)
 }
@@ -276,7 +301,7 @@ mod tests {
         let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
         // shape check — fields exist even when DB is empty/uninitialized
         assert!(v.get("total").is_some());
-        assert!(v.get("last_24h").is_some());
+        assert!(v.get("today").is_some());
         assert!(v.get("last_7d").is_some());
         assert!(v.get("last_30d").is_some());
     }
