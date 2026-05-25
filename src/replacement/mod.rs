@@ -66,7 +66,12 @@ pub fn apply_with_dedup(
             persisted
         } else {
             let rt_str = replacement_type_str(&m.rule.replacement_type);
-            let generated = replacers::generate(rt_str, &m.rule.id, &m.raw);
+            let generated = replacers::generate(
+                rt_str,
+                &m.rule.id,
+                &m.raw,
+                m.rule.literal_prefix.as_deref(),
+            );
             dedup.insert(m.raw.clone(), generated.clone());
             generated
         };
@@ -258,6 +263,7 @@ mod tests {
             replacement_type: rt,
             description: String::new(),
             severity: "medium".to_string(),
+            literal_prefix: None,
         });
         Match {
             rule,

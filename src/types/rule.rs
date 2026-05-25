@@ -94,6 +94,14 @@ pub struct NormalizedRule {
 
     #[serde(default = "default_severity")]
     pub severity: String,
+
+    /// Literal prefix extracted from `regex` at build time (e.g. `hf_`, `AKIA`,
+    /// `sk-ant-api`). When present, realistic replacers preserve these bytes
+    /// verbatim so the substituted token still looks like the same vendor's
+    /// secret format. Populated by the build-rules pipeline; `None` when no
+    /// stable literal head exists (e.g. alternation, leading char class).
+    #[serde(default)]
+    pub literal_prefix: Option<String>,
 }
 
 fn default_severity() -> String {

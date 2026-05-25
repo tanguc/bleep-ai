@@ -286,6 +286,7 @@ mod tests {
             replacement_type: ReplacementType::GenericRandom,
             description: String::new(),
             severity: "medium".to_string(),
+            literal_prefix: None,
         }
     }
 
@@ -663,7 +664,7 @@ mod luhn_tests {
     fn test_luhn_valid_fake_cc_output() {
         // generate 20 fake CC numbers — all must pass Luhn
         for _ in 0..20 {
-            let cc = crate::replacement::replacers::generate("faker_cc_luhn", "test", b"4532015112830366");
+            let cc = crate::replacement::replacers::generate("faker_cc_luhn", "test", b"4532015112830366", None);
             assert!(
                 luhn_valid(cc.as_bytes()),
                 "fake_cc_luhn output must always be Luhn-valid, got: {}",

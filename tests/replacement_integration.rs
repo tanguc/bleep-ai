@@ -23,6 +23,7 @@ fn make_match(raw: &[u8], span: std::ops::Range<usize>, rt: ReplacementType) -> 
         replacement_type: rt,
         description: String::new(),
         severity: "medium".to_string(),
+        literal_prefix: None,
     });
     Match {
         rule,
@@ -72,13 +73,13 @@ fn test_sc2_typed_fake_formats() {
     // realistic-mode default: replacers mimic input shape, no BLEEP markers
 
     // email: random handle at one of the RFC 2606 reserved domains
-    let email = replacers::generate("faker_email", "r", b"old@real.com");
+    let email = replacers::generate("faker_email", "r", b"old@real.com", None);
     let email_re = regex::Regex::new(r"^[a-z0-9]+@(example\.com|example\.org|example\.net)$").unwrap();
     assert!(email_re.is_match(&email), "email format mismatch: {}", email);
 
     // phone: format preserved (separators in same positions, digits randomized)
     let input_phone = "+1 (555) 123-4567";
-    let phone = replacers::generate("faker_phone", "r", input_phone.as_bytes());
+    let phone = replacers::generate("faker_phone", "r", input_phone.as_bytes(), None);
     assert_eq!(phone.len(), input_phone.len(), "phone length must be preserved: {}", phone);
     for (orig, new) in input_phone.chars().zip(phone.chars()) {
         if !orig.is_ascii_digit() {
@@ -87,18 +88,18 @@ fn test_sc2_typed_fake_formats() {
     }
 
     // SSN: 9XX area code (unallocated SSA range)
-    let ssn = replacers::generate("faker_ssn", "r", b"123-45-6789");
+    let ssn = replacers::generate("faker_ssn", "r", b"123-45-6789", None);
     let ssn_re = regex::Regex::new(r"^9\d{2}-\d{2}-\d{4}$").unwrap();
     assert!(ssn_re.is_match(&ssn), "ssn format mismatch: {}", ssn);
 
     // AWS key: prefix preserved from input, total 20 chars, no BLEEP
-    let aws = replacers::generate("faker_aws_key", "r", b"AKIAIOSFODNN7EXAMPLE");
+    let aws = replacers::generate("faker_aws_key", "r", b"AKIAIOSFODNN7EXAMPLE", None);
     assert_eq!(aws.len(), 20, "aws key must be 20 chars: {}", aws);
     assert!(aws.starts_with("AKIA"), "aws key prefix must be preserved: {}", aws);
     assert!(!aws.contains("BLEEP"), "aws key must not contain BLEEP marker: {}", aws);
 
     // GitHub PAT: prefix preserved, total 40 chars, no BLEEP
-    let pat = replacers::generate("faker_github_pat", "r", b"ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef0123");
+    let pat = replacers::generate("faker_github_pat", "r", b"ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef0123", None);
     assert_eq!(pat.len(), 40, "github pat must be 40 chars: {}", pat);
     assert!(pat.starts_with("ghp_"), "github pat prefix must be preserved: {}", pat);
     assert!(!pat.contains("BLEEP"), "github pat must not contain BLEEP marker: {}", pat);
@@ -126,7 +127,7 @@ fn test_sc3_all_types_json_safe() {
     ];
 
     for (rt, original) in types {
-        let fake = replacers::generate(rt, "test-rule", original);
+        let fake = replacers::generate(rt, "test-rule", original, None);
         // embed in JSON string and parse — must succeed
         let json_str = format!("\"{}\"", fake);
         serde_json::from_str::<serde_json::Value>(&json_str)
@@ -139,13 +140,13 @@ fn test_sc3_all_types_json_safe() {
 fn test_sc4_numeric_field_same_length() {
     // fpe_numeric: same digit count
     let orig = b"123456789";
-    let result = replacers::generate("fpe_numeric", "r", orig);
+    let result = replacers::generate("fpe_numeric", "r", orig, None);
     assert_eq!(result.len(), orig.len(), "fpe_numeric must preserve length: {} -> {}", std::str::from_utf8(orig).unwrap(), result);
     assert!(result.bytes().all(|b| b.is_ascii_digit()), "fpe output must be all digits: {}", result);
 
     // generic_random: same length
     let orig2 = b"ABCDEF";
-    let result2 = replacers::generate("generic_random", "r", orig2);
+    let result2 = replacers::generate("generic_random", "r", orig2, None);
     assert_eq!(result2.len(), orig2.len(), "generic_random must preserve length");
 }
 

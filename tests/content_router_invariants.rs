@@ -269,6 +269,7 @@ fn test_inv08_passthrough_type_not_in_redactions() {
         replacement_type: ReplacementType::Passthrough,
         description: String::new(),
         severity: "low".to_string(),
+        literal_prefix: None,
     });
     let m = Match {
         rule,

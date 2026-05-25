@@ -129,6 +129,7 @@ rules:
   replacement_type: faker_api_key
   description: Anthropic API key (sk-ant-api03-… variable length)
   severity: high
+  literal_prefix: sk-ant-api03-
 - id: custom.secret.aws-session-token
   name: AWS Session Token
   category: secret
@@ -146,6 +147,7 @@ rules:
   replacement_type: faker_api_key
   description: AWS STS session token (assignment form)
   severity: high
+  literal_prefix: AWS_SESSION_TOKEN
 - id: custom.secret.digitalocean-pat
   name: DigitalOcean PAT
   category: secret
@@ -163,6 +165,7 @@ rules:
   replacement_type: faker_api_key
   description: DigitalOcean personal access token
   severity: high
+  literal_prefix: dop_v1_
 - id: custom.secret.discord-bot-token
   name: Discord Bot Token
   category: secret
@@ -198,6 +201,7 @@ rules:
   replacement_type: generic_random
   description: Ethereum private key (0x + 64 hex)
   severity: high
+  literal_prefix: '0x'
 - id: custom.secret.gcp-api-key
   name: GCP API Key
   category: secret
@@ -216,6 +220,7 @@ rules:
   replacement_type: faker_api_key
   description: Google Cloud Platform API key (AIza…)
   severity: high
+  literal_prefix: AIza
 - id: custom.secret.gcp-oauth-client-secret
   name: GCP OAuth Client Secret
   category: secret
@@ -234,6 +239,7 @@ rules:
   replacement_type: faker_api_key
   description: GCP OAuth 2.0 client secret (GOCSPX-…)
   severity: high
+  literal_prefix: GOCSPX-
 - id: custom.secret.github-classic-pat
   name: GitHub Classic PAT (ghp_)
   category: secret
@@ -251,6 +257,7 @@ rules:
   replacement_type: faker_github_pat
   description: GitHub classic PAT (looser length than vendored np.github.1)
   severity: high
+  literal_prefix: ghp_
 - id: custom.secret.github-oauth
   name: GitHub OAuth Token (gho_)
   category: secret
@@ -268,6 +275,7 @@ rules:
   replacement_type: faker_github_pat
   description: GitHub OAuth access token
   severity: high
+  literal_prefix: gho_
 - id: custom.secret.github-pat-finegrained
   name: GitHub Fine-Grained PAT
   category: secret
@@ -285,6 +293,7 @@ rules:
   replacement_type: faker_github_pat
   description: GitHub fine-grained PAT (github_pat_…)
   severity: high
+  literal_prefix: github_pat_
 - id: custom.secret.github-refresh
   name: GitHub Refresh Token (ghr_)
   category: secret
@@ -302,6 +311,7 @@ rules:
   replacement_type: faker_github_pat
   description: GitHub refresh token
   severity: high
+  literal_prefix: ghr_
 - id: custom.secret.github-server-server
   name: GitHub Server-to-Server Token (ghs_)
   category: secret
@@ -319,6 +329,7 @@ rules:
   replacement_type: faker_github_pat
   description: GitHub server-to-server token
   severity: high
+  literal_prefix: ghs_
 - id: custom.secret.github-user-server
   name: GitHub User-to-Server Token (ghu_)
   category: secret
@@ -336,6 +347,7 @@ rules:
   replacement_type: faker_github_pat
   description: GitHub user-to-server token
   severity: high
+  literal_prefix: ghu_
 - id: custom.secret.huggingface-token
   name: HuggingFace Access Token
   category: secret
@@ -353,6 +365,7 @@ rules:
   replacement_type: faker_api_key
   description: HuggingFace user access token
   severity: high
+  literal_prefix: hf_
 - id: custom.secret.mongodb-srv-uri
   name: MongoDB SRV URI
   category: secret
@@ -370,6 +383,7 @@ rules:
   replacement_type: faker_db_conn
   description: MongoDB connection string with credentials
   severity: high
+  literal_prefix: mongodb
 - id: custom.secret.newrelic-license
   name: New Relic License Key
   category: secret
@@ -405,6 +419,7 @@ rules:
   replacement_type: faker_api_key
   description: OpenAI legacy secret key (sk-… 32+ alnum)
   severity: high
+  literal_prefix: sk-
 - id: custom.secret.openai-proj-key
   name: OpenAI Project API Key
   category: secret
@@ -422,6 +437,7 @@ rules:
   replacement_type: faker_api_key
   description: OpenAI project-scoped API key (sk-proj-…)
   severity: high
+  literal_prefix: sk-proj-
 - id: custom.secret.redis-uri
   name: Redis URI with Credentials
   category: secret
@@ -438,6 +454,7 @@ rules:
   replacement_type: faker_db_conn
   description: Redis URL with embedded password
   severity: high
+  literal_prefix: redis
 - id: custom.secret.replicate-token
   name: Replicate API Token
   category: secret
@@ -455,6 +472,7 @@ rules:
   replacement_type: faker_api_key
   description: Replicate.com API token
   severity: high
+  literal_prefix: r8_
 - id: custom.secret.sendgrid-api-key
   name: SendGrid API Key
   category: secret
@@ -471,6 +489,7 @@ rules:
   replacement_type: faker_api_key
   description: SendGrid API key (SG.id.secret)
   severity: high
+  literal_prefix: SG.
 - id: custom.secret.sentry-dsn
   name: Sentry DSN
   category: secret
@@ -488,6 +507,7 @@ rules:
   replacement_type: faker_url_cred
   description: Sentry DSN containing public key
   severity: medium
+  literal_prefix: https
 - id: custom.secret.slack-bot-token
   name: Slack Bot Token (xoxb)
   category: secret
@@ -505,6 +525,7 @@ rules:
   replacement_type: faker_api_key
   description: Slack bot token
   severity: high
+  literal_prefix: xoxb-
 - id: custom.secret.slack-user-token
   name: Slack User Token (xoxp)
   category: secret
@@ -522,6 +543,7 @@ rules:
   replacement_type: faker_api_key
   description: Slack user token
   severity: high
+  literal_prefix: xoxp-
 - id: custom.secret.stripe-publishable
   name: Stripe Publishable Key
   category: secret
@@ -539,6 +561,7 @@ rules:
   replacement_type: faker_api_key
   description: Stripe publishable key (lower risk but still PII-adjacent)
   severity: low
+  literal_prefix: pk_
 - id: custom.secret.stripe-restricted
   name: Stripe Restricted Key
   category: secret
@@ -556,6 +579,7 @@ rules:
   replacement_type: faker_api_key
   description: Stripe restricted key (rk_live_/rk_test_)
   severity: high
+  literal_prefix: rk_
 - id: custom.secret.stripe-test-secret
   name: Stripe Test Secret Key
   category: secret
@@ -573,6 +597,7 @@ rules:
   replacement_type: faker_api_key
   description: Stripe test mode secret key
   severity: high
+  literal_prefix: sk_test_
 - id: custom.secret.stripe-webhook
   name: Stripe Webhook Secret
   category: secret
@@ -590,6 +615,7 @@ rules:
   replacement_type: faker_api_key
   description: Stripe webhook signing secret
   severity: high
+  literal_prefix: whsec_
 - id: custom.secret.telegram-bot-token
   name: Telegram Bot Token
   category: secret
@@ -622,6 +648,7 @@ rules:
   replacement_type: faker_api_key
   description: Twilio Account SID
   severity: medium
+  literal_prefix: AC
 - id: custom.secret.twilio-api-key-sid
   name: Twilio API Key SID
   category: secret
@@ -638,6 +665,7 @@ rules:
   replacement_type: faker_api_key
   description: Twilio API key SID
   severity: high
+  literal_prefix: SK
 - id: gl.1password-secret-key
   name: Uncovered a possible 1Password secret key, potentially compromising access to secrets in vaults.
   category: secret
@@ -653,6 +681,7 @@ rules:
   replacement_type: faker_api_key
   description: Uncovered a possible 1Password secret key, potentially compromising access to secrets in vaults.
   severity: high
+  literal_prefix: A3-
 - id: gl.1password-service-account-token
   name: Uncovered a possible 1Password service account token, potentially compromising access to secrets in vaults.
   category: secret
@@ -668,6 +697,7 @@ rules:
   replacement_type: faker_api_key
   description: Uncovered a possible 1Password service account token, potentially compromising access to secrets in vaults.
   severity: high
+  literal_prefix: ops_eyJ
 - id: gl.age-secret-key
   name: Discovered a potential Age encryption tool secret key, risking data decryption and unauthorized access to sensitive information.
   category: secret
@@ -683,6 +713,7 @@ rules:
   replacement_type: faker_api_key
   description: Discovered a potential Age encryption tool secret key, risking data decryption and unauthorized access to sensitive information.
   severity: high
+  literal_prefix: AGE-SECRET-KEY-1
 - id: gl.airtable-api-key
   name: Uncovered a possible Airtable API Key, potentially compromising database access and leading to data leakage or alteration.
   category: secret
@@ -713,6 +744,7 @@ rules:
   replacement_type: faker_api_key
   description: Uncovered a possible Airtable Personal AccessToken, potentially compromising database access and leading to data leakage or alteration.
   severity: medium
+  literal_prefix: pat
 - id: gl.algolia-api-key
   name: Identified an Algolia API Key, which could result in unauthorized search operations and data exposure on Algolia-managed platforms.
   category: secret
@@ -743,6 +775,7 @@ rules:
   replacement_type: faker_api_key
   description: Detected an Alibaba Cloud AccessKey ID, posing a risk of unauthorized cloud resource access and potential data compromise.
   severity: high
+  literal_prefix: LTAI
 - id: gl.alibaba-secret-key
   name: Discovered a potential Alibaba Cloud Secret Key, potentially allowing unauthorized operations and data access within Alibaba Cloud.
   category: secret
@@ -773,6 +806,7 @@ rules:
   replacement_type: faker_api_key
   description: Detected an Anthropic Admin API Key, risking unauthorized access to administrative functions and sensitive AI model configurations.
   severity: high
+  literal_prefix: sk-ant-admin01-
 - id: gl.artifactory-api-key
   name: Detected an Artifactory api key, posing a risk unauthorized access to the central repository.
   category: secret
@@ -788,6 +822,7 @@ rules:
   replacement_type: faker_api_key
   description: Detected an Artifactory api key, posing a risk unauthorized access to the central repository.
   severity: high
+  literal_prefix: AKCp
 - id: gl.artifactory-reference-token
   name: Detected an Artifactory reference token, posing a risk of impersonation and unauthorized access to the central repository.
   category: secret
@@ -803,6 +838,7 @@ rules:
   replacement_type: faker_api_key
   description: Detected an Artifactory reference token, posing a risk of impersonation and unauthorized access to the central repository.
   severity: medium
+  literal_prefix: cmVmd
 - id: gl.asana-client-id
   name: Discovered a potential Asana Client ID, risking unauthorized access to Asana projects and sensitive task information.
   category: secret
@@ -884,6 +920,7 @@ rules:
   replacement_type: faker_aws_key
   description: Identified a pattern that may indicate long-lived Amazon Bedrock API keys, risking unauthorized Amazon Bedrock usage
   severity: medium
+  literal_prefix: ABSK
 - id: gl.aws-amazon-bedrock-api-key-short-lived
   name: Identified a pattern that may indicate short-lived Amazon Bedrock API keys, risking unauthorized Amazon Bedrock usage
   category: secret
@@ -899,6 +936,7 @@ rules:
   replacement_type: faker_aws_key
   description: Identified a pattern that may indicate short-lived Amazon Bedrock API keys, risking unauthorized Amazon Bedrock usage
   severity: medium
+  literal_prefix: bedrock-api-key-YmVkcm9jay5hbWF6b25hd3MuY29t
 - id: gl.azure-ad-client-secret
   name: Azure AD Client Secret
   category: secret
@@ -1019,6 +1057,7 @@ rules:
   replacement_type: faker_api_key
   description: Identified a pattern that may indicate clickhouse cloud API secret key, risking unauthorized clickhouse cloud api access and data breaches on ClickHouse Cloud platforms.
   severity: medium
+  literal_prefix: '4b1d'
 - id: gl.clojars-api-token
   name: Uncovered a possible Clojars API token, risking unauthorized access to Clojure libraries and potential code manipulation.
   category: secret
@@ -1034,6 +1073,7 @@ rules:
   replacement_type: faker_api_key
   description: Uncovered a possible Clojars API token, risking unauthorized access to Clojure libraries and potential code manipulation.
   severity: high
+  literal_prefix: CLOJARS_
 - id: gl.cloudflare-api-key
   name: Detected a Cloudflare API Key, potentially compromising cloud application deployments and operational security.
   category: secret
@@ -1080,6 +1120,7 @@ rules:
   replacement_type: faker_api_key
   description: Detected a Cloudflare Origin CA Key, potentially compromising cloud application deployments and operational security.
   severity: medium
+  literal_prefix: v1.0-
 - id: gl.codecov-access-token
   name: Found a pattern resembling a Codecov Access Token, posing a risk of unauthorized access to code coverage reports and sensitive data.
   category: secret
@@ -1186,6 +1227,7 @@ rules:
   replacement_type: faker_api_key
   description: Uncovered a Databricks API token, which may compromise big data analytics platforms and sensitive data processing.
   severity: high
+  literal_prefix: dapi
 - id: gl.datadog-access-token
   name: Detected a Datadog Access Token, potentially risking monitoring and analytics data exposure and manipulation.
   category: secret
@@ -1231,6 +1273,7 @@ rules:
   replacement_type: faker_api_key
   description: Found a DigitalOcean OAuth Access Token, risking unauthorized cloud resource access and data compromise.
   severity: medium
+  literal_prefix: doo_v1_
 - id: gl.digitalocean-pat
   name: Discovered a DigitalOcean Personal Access Token, posing a threat to cloud infrastructure security and data privacy.
   category: secret
@@ -1246,6 +1289,7 @@ rules:
   replacement_type: faker_api_key
   description: Discovered a DigitalOcean Personal Access Token, posing a threat to cloud infrastructure security and data privacy.
   severity: high
+  literal_prefix: dop_v1_
 - id: gl.digitalocean-refresh-token
   name: Uncovered a DigitalOcean OAuth Refresh Token, which could allow prolonged unauthorized access and resource manipulation.
   category: secret
@@ -1261,6 +1305,7 @@ rules:
   replacement_type: faker_api_key
   description: Uncovered a DigitalOcean OAuth Refresh Token, which could allow prolonged unauthorized access and resource manipulation.
   severity: medium
+  literal_prefix: dor_v1_
 - id: gl.discord-api-token
   name: Detected a Discord API key, potentially compromising communication channels and user data privacy on Discord.
   category: secret
@@ -1321,6 +1366,7 @@ rules:
   replacement_type: faker_api_key
   description: Discovered a Doppler API token, posing a risk to environment and secrets management security.
   severity: medium
+  literal_prefix: dp.pt.
 - id: gl.droneci-access-token
   name: Detected a Droneci Access Token, potentially compromising continuous integration and deployment workflows.
   category: secret
@@ -1396,6 +1442,7 @@ rules:
   replacement_type: faker_api_key
   description: Uncovered a Duffel API token, which may compromise travel platform integrations and sensitive customer data.
   severity: medium
+  literal_prefix: duffel_
 - id: gl.dynatrace-api-token
   name: Detected a Dynatrace API token, potentially risking application performance monitoring and data exposure.
   category: secret
@@ -1411,6 +1458,7 @@ rules:
   replacement_type: faker_api_key
   description: Detected a Dynatrace API token, potentially risking application performance monitoring and data exposure.
   severity: medium
+  literal_prefix: dt0c01.
 - id: gl.easypost-api-token
   name: Identified an EasyPost API token, which could lead to unauthorized postal and shipment service access and data exposure.
   category: secret
@@ -1426,6 +1474,7 @@ rules:
   replacement_type: faker_api_key
   description: Identified an EasyPost API token, which could lead to unauthorized postal and shipment service access and data exposure.
   severity: high
+  literal_prefix: EZAK
 - id: gl.easypost-test-api-token
   name: Detected an EasyPost test API token, risking exposure of test environments and potentially sensitive shipment data.
   category: secret
@@ -1441,6 +1490,7 @@ rules:
   replacement_type: faker_api_key
   description: Detected an EasyPost test API token, risking exposure of test environments and potentially sensitive shipment data.
   severity: high
+  literal_prefix: EZTK
 - id: gl.etsy-access-token
   name: Found an Etsy Access Token, potentially compromising Etsy shop management and customer data.
   category: secret
@@ -1487,6 +1537,7 @@ rules:
   replacement_type: faker_api_key
   description: Discovered a Facebook Page Access Token, posing a risk of unauthorized access to Facebook accounts and personal data exposure.
   severity: medium
+  literal_prefix: EAA
 - id: gl.facebook-secret
   name: Discovered a Facebook Application secret, posing a risk of unauthorized access to Facebook accounts and personal data exposure.
   category: secret
@@ -1592,6 +1643,7 @@ rules:
   replacement_type: faker_api_key
   description: Uncovered a Flutterwave Encryption Key, which may compromise payment processing and sensitive financial information.
   severity: high
+  literal_prefix: FLWSECK_TEST-
 - id: gl.flutterwave-public-key
   name: Detected a Finicity Public Key, potentially exposing public cryptographic operations and integrations.
   category: secret
@@ -1607,6 +1659,7 @@ rules:
   replacement_type: faker_api_key
   description: Detected a Finicity Public Key, potentially exposing public cryptographic operations and integrations.
   severity: high
+  literal_prefix: FLWPUBK_TEST-
 - id: gl.flutterwave-secret-key
   name: Identified a Flutterwave Secret Key, risking unauthorized financial transactions and data breaches.
   category: secret
@@ -1622,6 +1675,7 @@ rules:
   replacement_type: faker_api_key
   description: Identified a Flutterwave Secret Key, risking unauthorized financial transactions and data breaches.
   severity: high
+  literal_prefix: FLWSECK_TEST-
 - id: gl.flyio-access-token
   name: Uncovered a Fly.io API key
   category: secret
@@ -1654,6 +1708,7 @@ rules:
   replacement_type: faker_api_key
   description: Found a Frame.io API token, potentially compromising video collaboration and project management.
   severity: high
+  literal_prefix: fio-u-
 - id: gl.freemius-secret-key
   name: Detected a Freemius secret key, potentially exposing sensitive information.
   category: secret
@@ -1699,6 +1754,7 @@ rules:
   replacement_type: faker_api_key
   description: Uncovered a GCP API key, which could lead to unauthorized access to Google Cloud services and data breaches.
   severity: high
+  literal_prefix: AIza
 - id: gl.github-fine-grained-pat
   name: Found a GitHub Fine-Grained Personal Access Token, risking unauthorized repository access and code manipulation.
   category: secret
@@ -1714,6 +1770,7 @@ rules:
   replacement_type: faker_github_pat
   description: Found a GitHub Fine-Grained Personal Access Token, risking unauthorized repository access and code manipulation.
   severity: high
+  literal_prefix: github_pat_
 - id: gl.gitlab-cicd-job-token
   name: Identified a GitLab CI/CD Job Token, potential access to projects and some APIs on behalf of a user while the CI job is running.
   category: secret
@@ -1729,6 +1786,7 @@ rules:
   replacement_type: faker_api_key
   description: Identified a GitLab CI/CD Job Token, potential access to projects and some APIs on behalf of a user while the CI job is running.
   severity: medium
+  literal_prefix: glcbt-
 - id: gl.gitlab-deploy-token
   name: Identified a GitLab Deploy Token, risking access to repositories, packages and containers with write access.
   category: secret
@@ -1744,6 +1802,7 @@ rules:
   replacement_type: faker_api_key
   description: Identified a GitLab Deploy Token, risking access to repositories, packages and containers with write access.
   severity: medium
+  literal_prefix: gldt-
 - id: gl.gitlab-feature-flag-client-token
   name: Identified a GitLab feature flag client token, risks exposing user lists and features flags used by an application.
   category: secret
@@ -1759,6 +1818,7 @@ rules:
   replacement_type: faker_api_key
   description: Identified a GitLab feature flag client token, risks exposing user lists and features flags used by an application.
   severity: medium
+  literal_prefix: glffct-
 - id: gl.gitlab-feed-token
   name: Identified a GitLab feed token, risking exposure of user data.
   category: secret
@@ -1774,6 +1834,7 @@ rules:
   replacement_type: faker_api_key
   description: Identified a GitLab feed token, risking exposure of user data.
   severity: medium
+  literal_prefix: glft-
 - id: gl.gitlab-incoming-mail-token
   name: Identified a GitLab incoming mail token, risking manipulation of data sent by mail.
   category: secret
@@ -1789,6 +1850,7 @@ rules:
   replacement_type: faker_api_key
   description: Identified a GitLab incoming mail token, risking manipulation of data sent by mail.
   severity: medium
+  literal_prefix: glimt-
 - id: gl.gitlab-kubernetes-agent-token
   name: Identified a GitLab Kubernetes Agent token, risking access to repos and registry of projects connected via agent.
   category: secret
@@ -1804,6 +1866,7 @@ rules:
   replacement_type: faker_api_key
   description: Identified a GitLab Kubernetes Agent token, risking access to repos and registry of projects connected via agent.
   severity: medium
+  literal_prefix: glagent-
 - id: gl.gitlab-oauth-app-secret
   name: Identified a GitLab OIDC Application Secret, risking access to apps using GitLab as authentication provider.
   category: secret
@@ -1819,6 +1882,7 @@ rules:
   replacement_type: faker_api_key
   description: Identified a GitLab OIDC Application Secret, risking access to apps using GitLab as authentication provider.
   severity: medium
+  literal_prefix: gloas-
 - id: gl.gitlab-pat-routable
   name: Identified a GitLab Personal Access Token (routable), risking unauthorized access to GitLab repositories and codebase exposure.
   category: secret
@@ -1834,6 +1898,7 @@ rules:
   replacement_type: faker_api_key
   description: Identified a GitLab Personal Access Token (routable), risking unauthorized access to GitLab repositories and codebase exposure.
   severity: high
+  literal_prefix: glpat-
 - id: gl.gitlab-ptt
   name: Found a GitLab Pipeline Trigger Token, potentially compromising continuous integration workflows and project security.
   category: secret
@@ -1849,6 +1914,7 @@ rules:
   replacement_type: faker_api_key
   description: Found a GitLab Pipeline Trigger Token, potentially compromising continuous integration workflows and project security.
   severity: high
+  literal_prefix: glptt-
 - id: gl.gitlab-rrt
   name: Discovered a GitLab Runner Registration Token, posing a risk to CI/CD pipeline integrity and unauthorized access.
   category: secret
@@ -1864,6 +1930,7 @@ rules:
   replacement_type: faker_api_key
   description: Discovered a GitLab Runner Registration Token, posing a risk to CI/CD pipeline integrity and unauthorized access.
   severity: high
+  literal_prefix: GR1348941
 - id: gl.gitlab-runner-authentication-token
   name: Discovered a GitLab Runner Authentication Token, posing a risk to CI/CD pipeline integrity and unauthorized access.
   category: secret
@@ -1879,6 +1946,7 @@ rules:
   replacement_type: faker_api_key
   description: Discovered a GitLab Runner Authentication Token, posing a risk to CI/CD pipeline integrity and unauthorized access.
   severity: medium
+  literal_prefix: glrt-
 - id: gl.gitlab-runner-authentication-token-routable
   name: Discovered a GitLab Runner Authentication Token (Routable), posing a risk to CI/CD pipeline integrity and unauthorized access.
   category: secret
@@ -1894,6 +1962,7 @@ rules:
   replacement_type: faker_api_key
   description: Discovered a GitLab Runner Authentication Token (Routable), posing a risk to CI/CD pipeline integrity and unauthorized access.
   severity: medium
+  literal_prefix: glrt-t
 - id: gl.gitlab-scim-token
   name: Discovered a GitLab SCIM Token, posing a risk to unauthorized access for a organization or instance.
   category: secret
@@ -1909,6 +1978,7 @@ rules:
   replacement_type: faker_api_key
   description: Discovered a GitLab SCIM Token, posing a risk to unauthorized access for a organization or instance.
   severity: medium
+  literal_prefix: glsoat-
 - id: gl.gitlab-session-cookie
   name: Discovered a GitLab Session Cookie, posing a risk to unauthorized access to a user account.
   category: secret
@@ -1924,6 +1994,7 @@ rules:
   replacement_type: faker_api_key
   description: Discovered a GitLab Session Cookie, posing a risk to unauthorized access to a user account.
   severity: medium
+  literal_prefix: _gitlab_session
 - id: gl.gitter-access-token
   name: Uncovered a Gitter Access Token, which may lead to unauthorized access to chat and communication services.
   category: secret
@@ -1970,6 +2041,7 @@ rules:
   replacement_type: faker_api_key
   description: Identified a Grafana API key, which could compromise monitoring dashboards and sensitive data analytics.
   severity: high
+  literal_prefix: eyJrIjoi
 - id: gl.grafana-cloud-api-token
   name: Found a Grafana cloud API token, risking unauthorized access to cloud-based monitoring services and data exposure.
   category: secret
@@ -1985,6 +2057,7 @@ rules:
   replacement_type: faker_api_key
   description: Found a Grafana cloud API token, risking unauthorized access to cloud-based monitoring services and data exposure.
   severity: high
+  literal_prefix: glc_
 - id: gl.grafana-service-account-token
   name: Discovered a Grafana service account token, posing a risk of compromised monitoring services and data integrity.
   category: secret
@@ -2000,6 +2073,7 @@ rules:
   replacement_type: faker_api_key
   description: Discovered a Grafana service account token, posing a risk of compromised monitoring services and data integrity.
   severity: high
+  literal_prefix: glsa_
 - id: gl.harness-api-key
   name: Identified a Harness Access Token (PAT or SAT), risking unauthorized access to a Harness account.
   category: secret
@@ -2077,6 +2151,7 @@ rules:
   replacement_type: faker_api_key
   description: Detected a Heroku API Key, potentially compromising cloud application deployments and operational security.
   severity: medium
+  literal_prefix: HRKU-AA
 - id: gl.hubspot-api-key
   name: Found a HubSpot API Token, posing a risk to CRM data integrity and unauthorized marketing operations.
   category: secret
@@ -2107,6 +2182,7 @@ rules:
   replacement_type: faker_api_key
   description: Discovered a Hugging Face Access token, which could lead to unauthorized access to AI models and sensitive data.
   severity: high
+  literal_prefix: hf_
 - id: gl.huggingface-organization-api-token
   name: Uncovered a Hugging Face Organization API token, potentially compromising AI organization accounts and associated data.
   category: secret
@@ -2122,6 +2198,7 @@ rules:
   replacement_type: faker_api_key
   description: Uncovered a Hugging Face Organization API token, potentially compromising AI organization accounts and associated data.
   severity: high
+  literal_prefix: api_org_
 - id: gl.infracost-api-token
   name: Detected an Infracost API Token, risking unauthorized access to cloud cost estimation tools and financial data.
   category: secret
@@ -2137,6 +2214,7 @@ rules:
   replacement_type: faker_api_key
   description: Detected an Infracost API Token, risking unauthorized access to cloud cost estimation tools and financial data.
   severity: high
+  literal_prefix: ico-
 - id: gl.intercom-api-key
   name: Identified an Intercom API Token, which could compromise customer communication channels and data privacy.
   category: secret
@@ -2169,6 +2247,7 @@ rules:
   replacement_type: faker_api_key
   description: Found a Intra42 client secret, which could lead to unauthorized access to the 42School API and sensitive data.
   severity: medium
+  literal_prefix: s-s4t2
 - id: gl.jfrog-api-key
   name: Found a JFrog API Key, posing a risk of unauthorized access to software artifact repositories and build pipelines.
   category: secret
@@ -2220,6 +2299,7 @@ rules:
   replacement_type: faker_jwt
   description: Detected a Base64-encoded JSON Web Token, posing a risk of exposing encoded authentication and data exchange information.
   severity: medium
+  literal_prefix: ZXlK
 - id: gl.kraken-access-token
   name: Identified a Kraken Access Token, potentially compromising cryptocurrency trading accounts and financial security.
   category: secret
@@ -2310,6 +2390,7 @@ rules:
   replacement_type: faker_api_key
   description: Detected a Linear API Token, posing a risk to project management tools and sensitive task data.
   severity: high
+  literal_prefix: lin_api_
 - id: gl.linear-client-secret
   name: Identified a Linear Client Secret, which may compromise secure integrations and sensitive project management data.
   category: secret
@@ -2578,6 +2659,7 @@ rules:
   replacement_type: faker_api_key
   description: Uncovered a Microsoft Teams Webhook, which could lead to unauthorized access to team collaboration tools and data leaks.
   severity: medium
+  literal_prefix: https
 - id: gl.netlify-access-token
   name: Detected a Netlify Access Token, potentially compromising web hosting services and site management.
   category: secret
@@ -2670,6 +2752,7 @@ rules:
   replacement_type: faker_api_key
   description: Notion API token
   severity: medium
+  literal_prefix: ntn_
 - id: gl.npm-access-token
   name: Uncovered an npm access token, potentially compromising package management and code repository access.
   category: secret
@@ -2685,6 +2768,7 @@ rules:
   replacement_type: faker_api_key
   description: Uncovered an npm access token, potentially compromising package management and code repository access.
   severity: high
+  literal_prefix: npm_
 - id: gl.nuget-config-password
   name: Identified a password within a Nuget config file, potentially compromising package management access.
   category: secret
@@ -2732,6 +2816,7 @@ rules:
   replacement_type: faker_api_key
   description: Discovered a potential Octopus Deploy API key, risking application deployments and operational security.
   severity: medium
+  literal_prefix: API-
 - id: gl.okta-access-token
   name: Identified an Okta Access Token, which may compromise identity management services and user authentication data.
   category: secret
@@ -2777,6 +2862,7 @@ rules:
   replacement_type: faker_api_key
   description: Found an OpenShift user token, potentially compromising an OpenShift/Kubernetes cluster.
   severity: medium
+  literal_prefix: sha256
 - id: gl.perplexity-api-key
   name: Detected a Perplexity API key, which could lead to unauthorized access to Perplexity AI services and data exposure.
   category: secret
@@ -2792,6 +2878,7 @@ rules:
   replacement_type: faker_api_key
   description: Detected a Perplexity API key, which could lead to unauthorized access to Perplexity AI services and data exposure.
   severity: high
+  literal_prefix: pplx-
 - id: gl.plaid-api-token
   name: Discovered a Plaid API Token, potentially compromising financial data aggregation and banking services.
   category: secret
@@ -2852,6 +2939,7 @@ rules:
   replacement_type: faker_api_key
   description: Identified a PlanetScale API token, potentially compromising database management and operations.
   severity: high
+  literal_prefix: pscale_tkn_
 - id: gl.planetscale-oauth-token
   name: Found a PlanetScale OAuth token, posing a risk to database access control and sensitive data integrity.
   category: secret
@@ -2867,6 +2955,7 @@ rules:
   replacement_type: faker_api_key
   description: Found a PlanetScale OAuth token, posing a risk to database access control and sensitive data integrity.
   severity: high
+  literal_prefix: pscale_oauth_
 - id: gl.planetscale-password
   name: Discovered a PlanetScale password, which could lead to unauthorized database operations and data breaches.
   category: secret
@@ -2882,6 +2971,7 @@ rules:
   replacement_type: faker_api_key
   description: Discovered a PlanetScale password, which could lead to unauthorized database operations and data breaches.
   severity: high
+  literal_prefix: pscale_pw_
 - id: gl.postman-api-token
   name: Uncovered a Postman API token, potentially compromising API testing and development workflows.
   category: secret
@@ -2897,6 +2987,7 @@ rules:
   replacement_type: faker_api_key
   description: Uncovered a Postman API token, potentially compromising API testing and development workflows.
   severity: high
+  literal_prefix: PMAK-
 - id: gl.prefect-api-token
   name: Detected a Prefect API token, risking unauthorized access to workflow management and automation services.
   category: secret
@@ -2912,6 +3003,7 @@ rules:
   replacement_type: faker_api_key
   description: Detected a Prefect API token, risking unauthorized access to workflow management and automation services.
   severity: high
+  literal_prefix: pnu_
 - id: gl.private-key
   name: Identified a Private Key, which may compromise cryptographic security and sensitive data encryption.
   category: secret
@@ -2927,6 +3019,7 @@ rules:
   replacement_type: faker_api_key
   description: Identified a Private Key, which may compromise cryptographic security and sensitive data encryption.
   severity: medium
+  literal_prefix: '-----BEGIN'
 - id: gl.privateai-api-token
   name: Identified a PrivateAI Token, posing a risk of unauthorized access to AI services and data manipulation.
   category: secret
@@ -2959,6 +3052,7 @@ rules:
   replacement_type: faker_api_key
   description: Found a Pulumi API token, posing a risk to infrastructure as code services and cloud resource management.
   severity: medium
+  literal_prefix: pul-
 - id: gl.pypi-upload-token
   name: Discovered a PyPI upload token, potentially compromising Python package distribution and repository integrity.
   category: secret
@@ -2974,6 +3068,7 @@ rules:
   replacement_type: faker_api_key
   description: Discovered a PyPI upload token, potentially compromising Python package distribution and repository integrity.
   severity: high
+  literal_prefix: pypi-AgEIcHlwaS5vcmc
 - id: gl.rapidapi-access-token
   name: Uncovered a RapidAPI Access Token, which could lead to unauthorized access to various APIs and data services.
   category: secret
@@ -3004,6 +3099,7 @@ rules:
   replacement_type: faker_api_key
   description: Detected a Readme API token, risking unauthorized documentation management and content exposure.
   severity: high
+  literal_prefix: rdme_
 - id: gl.rubygems-api-token
   name: Identified a Rubygem API token, potentially compromising Ruby library distribution and package management.
   category: secret
@@ -3019,6 +3115,7 @@ rules:
   replacement_type: faker_api_key
   description: Identified a Rubygem API token, potentially compromising Ruby library distribution and package management.
   severity: high
+  literal_prefix: rubygems_
 - id: gl.scalingo-api-token
   name: Found a Scalingo API token, posing a risk to cloud platform services and application deployment security.
   category: secret
@@ -3034,6 +3131,7 @@ rules:
   replacement_type: faker_api_key
   description: Found a Scalingo API token, posing a risk to cloud platform services and application deployment security.
   severity: high
+  literal_prefix: tk-us-
 - id: gl.sendbird-access-id
   name: Discovered a Sendbird Access ID, which could compromise chat and messaging platform integrations.
   category: secret
@@ -3079,6 +3177,7 @@ rules:
   replacement_type: faker_api_key
   description: Detected a SendGrid API token, posing a risk of unauthorized email service operations and data exposure.
   severity: medium
+  literal_prefix: SG.
 - id: gl.sendinblue-api-token
   name: Identified a Sendinblue API token, which may compromise email marketing services and subscriber data privacy.
   category: secret
@@ -3094,6 +3193,7 @@ rules:
   replacement_type: faker_api_key
   description: Identified a Sendinblue API token, which may compromise email marketing services and subscriber data privacy.
   severity: high
+  literal_prefix: xkeysib-
 - id: gl.sentry-access-token
   name: Found a Sentry.io Access Token (old format), risking unauthorized access to error tracking services and sensitive application data.
   category: secret
@@ -3124,6 +3224,7 @@ rules:
   replacement_type: faker_api_key
   description: Found a Sentry.io Organization Token, risking unauthorized access to error tracking services and sensitive application data.
   severity: high
+  literal_prefix: sntrys_eyJpYXQiO
 - id: gl.sentry-user-token
   name: Found a Sentry.io User Token, risking unauthorized access to error tracking services and sensitive application data.
   category: secret
@@ -3139,6 +3240,7 @@ rules:
   replacement_type: faker_api_key
   description: Found a Sentry.io User Token, risking unauthorized access to error tracking services and sensitive application data.
   severity: medium
+  literal_prefix: sntryu_
 - id: gl.settlemint-application-access-token
   name: Found a Settlemint Application Access Token.
   category: secret
@@ -3154,6 +3256,7 @@ rules:
   replacement_type: faker_api_key
   description: Found a Settlemint Application Access Token.
   severity: medium
+  literal_prefix: sm_aat_
 - id: gl.settlemint-personal-access-token
   name: Found a Settlemint Personal Access Token.
   category: secret
@@ -3169,6 +3272,7 @@ rules:
   replacement_type: faker_api_key
   description: Found a Settlemint Personal Access Token.
   severity: medium
+  literal_prefix: sm_pat_
 - id: gl.settlemint-service-access-token
   name: Found a Settlemint Service Access Token.
   category: secret
@@ -3184,6 +3288,7 @@ rules:
   replacement_type: faker_api_key
   description: Found a Settlemint Service Access Token.
   severity: medium
+  literal_prefix: sm_sat_
 - id: gl.shippo-api-token
   name: Discovered a Shippo API token, potentially compromising shipping services and customer order data.
   category: secret
@@ -3199,6 +3304,7 @@ rules:
   replacement_type: faker_api_key
   description: Discovered a Shippo API token, potentially compromising shipping services and customer order data.
   severity: medium
+  literal_prefix: shippo_
 - id: gl.shopify-access-token
   name: Uncovered a Shopify access token, which could lead to unauthorized e-commerce platform access and data breaches.
   category: secret
@@ -3214,6 +3320,7 @@ rules:
   replacement_type: faker_api_key
   description: Uncovered a Shopify access token, which could lead to unauthorized e-commerce platform access and data breaches.
   severity: high
+  literal_prefix: shpat_
 - id: gl.shopify-custom-access-token
   name: Detected a Shopify custom access token, potentially compromising custom app integrations and e-commerce data security.
   category: secret
@@ -3229,6 +3336,7 @@ rules:
   replacement_type: faker_api_key
   description: Detected a Shopify custom access token, potentially compromising custom app integrations and e-commerce data security.
   severity: high
+  literal_prefix: shpca_
 - id: gl.shopify-private-app-access-token
   name: Identified a Shopify private app access token, risking unauthorized access to private app data and store operations.
   category: secret
@@ -3244,6 +3352,7 @@ rules:
   replacement_type: faker_api_key
   description: Identified a Shopify private app access token, risking unauthorized access to private app data and store operations.
   severity: high
+  literal_prefix: shppa_
 - id: gl.shopify-shared-secret
   name: Found a Shopify shared secret, posing a risk to application authentication and e-commerce platform security.
   category: secret
@@ -3259,6 +3368,7 @@ rules:
   replacement_type: faker_api_key
   description: Found a Shopify shared secret, posing a risk to application authentication and e-commerce platform security.
   severity: high
+  literal_prefix: shpss_
 - id: gl.sidekiq-secret
   name: Discovered a Sidekiq Secret, which could lead to compromised background job processing and application data breaches.
   category: secret
@@ -3291,6 +3401,7 @@ rules:
   replacement_type: faker_db_conn
   description: Uncovered a Sidekiq Sensitive URL, potentially exposing internal job queues and sensitive operation details.
   severity: medium
+  literal_prefix: http
 - id: gl.slack-app-token
   name: Detected a Slack App-level token, risking unauthorized access to Slack applications and workspace data.
   category: secret
@@ -3306,6 +3417,7 @@ rules:
   replacement_type: faker_api_key
   description: Detected a Slack App-level token, risking unauthorized access to Slack applications and workspace data.
   severity: high
+  literal_prefix: xapp-
 - id: gl.slack-config-access-token
   name: Found a Slack Configuration access token, posing a risk to workspace configuration and sensitive data access.
   category: secret
@@ -3322,6 +3434,7 @@ rules:
   replacement_type: faker_api_key
   description: Found a Slack Configuration access token, posing a risk to workspace configuration and sensitive data access.
   severity: high
+  literal_prefix: xoxe
 - id: gl.slack-config-refresh-token
   name: Discovered a Slack Configuration refresh token, potentially allowing prolonged unauthorized access to configuration settings.
   category: secret
@@ -3337,6 +3450,7 @@ rules:
   replacement_type: faker_api_key
   description: Discovered a Slack Configuration refresh token, potentially allowing prolonged unauthorized access to configuration settings.
   severity: medium
+  literal_prefix: xoxe-
 - id: gl.slack-legacy-bot-token
   name: Uncovered a Slack Legacy bot token, which could lead to compromised legacy bot operations and data exposure.
   category: secret
@@ -3352,6 +3466,7 @@ rules:
   replacement_type: faker_api_key
   description: Uncovered a Slack Legacy bot token, which could lead to compromised legacy bot operations and data exposure.
   severity: high
+  literal_prefix: xoxb-
 - id: gl.slack-legacy-token
   name: Detected a Slack Legacy token, risking unauthorized access to older Slack integrations and user data.
   category: secret
@@ -3368,6 +3483,7 @@ rules:
   replacement_type: faker_api_key
   description: Detected a Slack Legacy token, risking unauthorized access to older Slack integrations and user data.
   severity: medium
+  literal_prefix: xox
 - id: gl.slack-legacy-workspace-token
   name: Identified a Slack Legacy Workspace token, potentially compromising access to workspace data and legacy features.
   category: secret
@@ -3384,6 +3500,7 @@ rules:
   replacement_type: faker_api_key
   description: Identified a Slack Legacy Workspace token, potentially compromising access to workspace data and legacy features.
   severity: medium
+  literal_prefix: xox
 - id: gl.slack-user-token
   name: Found a Slack User token, posing a risk of unauthorized user impersonation and data access within Slack workspaces.
   category: secret
@@ -3400,6 +3517,7 @@ rules:
   replacement_type: faker_api_key
   description: Found a Slack User token, posing a risk of unauthorized user impersonation and data access within Slack workspaces.
   severity: medium
+  literal_prefix: xox
 - id: gl.slack-webhook-url
   name: Discovered a Slack Webhook, which could lead to unauthorized message posting and data leakage in Slack channels.
   category: secret
@@ -3462,6 +3580,7 @@ rules:
   replacement_type: faker_api_key
   description: Sourcegraph access token (requires sgp_ or sgph_ prefix)
   severity: high
+  literal_prefix: sgp
 - id: gl.square-access-token
   name: Detected a Square Access Token, risking unauthorized payment processing and financial transaction exposure.
   category: secret
@@ -3588,6 +3707,7 @@ rules:
   replacement_type: faker_api_key
   description: Found a Twilio API Key, posing a risk to communication services and sensitive customer interaction data.
   severity: medium
+  literal_prefix: SK
 - id: gl.twitch-api-token
   name: Discovered a Twitch API token, which could compromise streaming services and account integrations.
   category: secret
@@ -3708,6 +3828,7 @@ rules:
   replacement_type: faker_api_key
   description: Detected a Vault Batch Token, risking unauthorized access to secret management services and sensitive data.
   severity: medium
+  literal_prefix: hvb.
 - id: gl.vault-service-token
   name: Identified a Vault Service Token, potentially compromising infrastructure security and access to sensitive credentials.
   category: secret
@@ -3864,17 +3985,15 @@ rules:
   confidence: low
   regex: \b([A-Za-z0-9_-]{44})\b
   keywords:
-  - ibm
   - iam_apikey
   - ibmcloud
   - bx login
-  - apikey=
-  entropy: null
+  entropy: 4.3
   tags:
   - hand-authored
   checksum_type: null
   replacement_type: faker_api_key
-  description: IBM Cloud IAM token (44-char alphanumeric, requires IBM context keyword)
+  description: IBM Cloud IAM token (44-char base64, entropy>=4.3, requires IBM-specific context keyword)
   severity: medium
 - id: np.adafruit.1
   name: Adafruit IO Key
@@ -3933,6 +4052,7 @@ rules:
   replacement_type: faker_api_key
   description: ''
   severity: high
+  literal_prefix: age1
 - id: np.age.2
   name: Age Identity (X22519 secret key)
   category: secret
@@ -3948,6 +4068,7 @@ rules:
   replacement_type: faker_api_key
   description: ''
   severity: high
+  literal_prefix: AGE-SECRET-KEY-1
 - id: np.anthropic.1
   name: Anthropic API Key
   category: secret
@@ -4068,6 +4189,7 @@ rules:
   replacement_type: faker_api_key
   description: ''
   severity: medium
+  literal_prefix: artifactory
 - id: np.atlassian.1
   name: Atlassian Cloud API Token
   category: secret
@@ -4169,6 +4291,7 @@ rules:
   replacement_type: faker_aws_key
   description: ''
   severity: medium
+  literal_prefix: aws
 - id: np.aws.4
   name: AWS Session Token
   category: secret
@@ -4201,6 +4324,7 @@ rules:
   replacement_type: faker_aws_key
   description: ''
   severity: high
+  literal_prefix: amzn.mws.
 - id: np.aws.6
   name: AWS API Credentials
   category: secret
@@ -4478,6 +4602,7 @@ rules:
   replacement_type: faker_api_key
   description: ''
   severity: high
+  literal_prefix: cio
 - id: np.databricks.1
   name: Databricks Personal Access Token
   category: secret
@@ -4741,6 +4866,7 @@ rules:
   replacement_type: faker_api_key
   description: ''
   severity: high
+  literal_prefix: odt_
 - id: np.dynatrace.1
   name: Dynatrace Token
   category: secret
@@ -4755,6 +4881,7 @@ rules:
   replacement_type: faker_api_key
   description: ''
   severity: high
+  literal_prefix: dt0
 - id: np.facebook.1
   name: Facebook Secret Key
   category: secret
@@ -4792,6 +4919,7 @@ rules:
   replacement_type: faker_api_key
   description: ''
   severity: high
+  literal_prefix: EAACEdEose0cBA
 - id: np.figma.1
   name: Figma Personal Access Token
   category: secret
@@ -4833,6 +4961,7 @@ rules:
   replacement_type: faker_api_key
   description: ''
   severity: high
+  literal_prefix: fc-
 - id: np.gcs.1
   name: Google Cloud Storage Bucket
   category: secret
@@ -4872,6 +5001,7 @@ rules:
   replacement_type: faker_api_key
   description: Google Cloud Storage signed URL (must contain credential parameters)
   severity: high
+  literal_prefix: storage.googleapis.com
 - id: np.generic.10
   name: Connection String in .NET Configuration
   category: secret
@@ -5236,6 +5366,7 @@ rules:
   replacement_type: faker_github_pat
   description: ''
   severity: high
+  literal_prefix: ghp_
 - id: np.github.2
   name: GitHub OAuth Access Token
   category: secret
@@ -5250,6 +5381,7 @@ rules:
   replacement_type: faker_github_pat
   description: ''
   severity: high
+  literal_prefix: gho_
 - id: np.github.3
   name: GitHub App Token
   category: secret
@@ -5278,6 +5410,7 @@ rules:
   replacement_type: faker_github_pat
   description: ''
   severity: high
+  literal_prefix: ghr_
 - id: np.github.5
   name: GitHub Client ID
   category: secret
@@ -5357,6 +5490,7 @@ rules:
   replacement_type: faker_api_key
   description: ''
   severity: high
+  literal_prefix: GR1348941
 - id: np.gitlab.2
   name: GitLab Personal Access Token
   category: secret
@@ -5371,6 +5505,7 @@ rules:
   replacement_type: faker_api_key
   description: ''
   severity: high
+  literal_prefix: glpat-
 - id: np.gitlab.3
   name: GitLab Pipeline Trigger Token
   category: secret
@@ -5385,6 +5520,7 @@ rules:
   replacement_type: faker_api_key
   description: ''
   severity: high
+  literal_prefix: glptt-
 - id: np.google.1
   name: Google Client ID
   category: secret
@@ -5597,6 +5733,7 @@ rules:
   replacement_type: faker_api_key
   description: ''
   severity: high
+  literal_prefix: gsk_
 - id: np.hashicorp.1
   name: Hashicorp Vault Service Token (< v1.10)
   category: secret
@@ -5753,6 +5890,7 @@ rules:
   replacement_type: faker_api_key
   description: ''
   severity: high
+  literal_prefix: heroku
 - id: np.http.1
   name: HTTP Basic Authentication
   category: infra
@@ -5805,6 +5943,7 @@ rules:
   replacement_type: faker_api_key
   description: ''
   severity: high
+  literal_prefix: hf_
 - id: np.jenkins.1
   name: Jenkins Token or Crumb
   category: secret
@@ -6109,6 +6248,7 @@ rules:
   replacement_type: faker_api_key
   description: ''
   severity: high
+  literal_prefix: mapbox
 - id: np.mapbox.2
   name: Mapbox Secret Access Token
   category: secret
@@ -6123,6 +6263,7 @@ rules:
   replacement_type: faker_api_key
   description: ''
   severity: high
+  literal_prefix: mapbox
 - id: np.mapbox.3
   name: Mapbox Temporary Access Token
   category: secret
@@ -6137,6 +6278,7 @@ rules:
   replacement_type: faker_api_key
   description: ''
   severity: high
+  literal_prefix: mapbox
 - id: np.mongodb.1
   name: Prince
   category: secret
@@ -6431,6 +6573,7 @@ rules:
   replacement_type: faker_api_key
   description: ''
   severity: high
+  literal_prefix: oy2
 - id: np.odbc.1
   name: Credentials in ODBC Connection String
   category: secret
@@ -6649,6 +6792,7 @@ rules:
   replacement_type: faker_api_key
   description: ''
   severity: high
+  literal_prefix: $1$
 - id: np.pwhash.2
   name: Password Hash (bcrypt)
   category: secret
@@ -6663,6 +6807,7 @@ rules:
   replacement_type: faker_api_key
   description: ''
   severity: high
+  literal_prefix: $2
 - id: np.pwhash.3
   name: Password Hash (sha256crypt)
   category: secret
@@ -6959,6 +7104,7 @@ rules:
   replacement_type: faker_api_key
   description: ''
   severity: high
+  literal_prefix: SG.
 - id: np.shopify.1
   name: Shopify Domain
   category: secret
@@ -6997,6 +7143,7 @@ rules:
   replacement_type: faker_api_key
   description: ''
   severity: high
+  literal_prefix: shpss_
 - id: np.shopify.3
   name: Shopify Access Token (Public App)
   category: secret
@@ -7013,6 +7160,7 @@ rules:
   replacement_type: faker_api_key
   description: ''
   severity: high
+  literal_prefix: shpat_
 - id: np.shopify.4
   name: Shopify Access Token (Custom App)
   category: secret
@@ -7029,6 +7177,7 @@ rules:
   replacement_type: faker_api_key
   description: ''
   severity: high
+  literal_prefix: shpca_
 - id: np.shopify.5
   name: Shopify Access Token (Legacy Private App)
   category: secret
@@ -7045,6 +7194,7 @@ rules:
   replacement_type: faker_api_key
   description: ''
   severity: high
+  literal_prefix: shppa_
 - id: np.slack.2
   name: Slack Bot Token
   category: secret
@@ -7061,6 +7211,7 @@ rules:
   replacement_type: faker_api_key
   description: ''
   severity: high
+  literal_prefix: xoxb-
 - id: np.slack.3
   name: Slack Webhook
   category: secret
@@ -7077,6 +7228,7 @@ rules:
   replacement_type: faker_api_key
   description: ''
   severity: high
+  literal_prefix: https
 - id: np.slack.4
   name: Slack User Token
   category: secret
@@ -7093,6 +7245,7 @@ rules:
   replacement_type: faker_api_key
   description: ''
   severity: high
+  literal_prefix: xoxp-
 - id: np.slack.5
   name: Slack App Token
   category: secret
@@ -7109,6 +7262,7 @@ rules:
   replacement_type: faker_api_key
   description: ''
   severity: high
+  literal_prefix: xapp-
 - id: np.slack.6
   name: Slack Legacy Bot Token
   category: secret
@@ -7125,6 +7279,7 @@ rules:
   replacement_type: faker_api_key
   description: ''
   severity: high
+  literal_prefix: xoxb-
 - id: np.sonarqube.1
   name: SonarQube Token
   category: secret
@@ -7142,6 +7297,7 @@ rules:
   replacement_type: faker_api_key
   description: ''
   severity: medium
+  literal_prefix: sonar
 - id: np.sourcegraph.1
   name: Sourcegraph Access Token
   category: secret
@@ -7158,6 +7314,7 @@ rules:
   replacement_type: faker_api_key
   description: ''
   severity: high
+  literal_prefix: sgp_
 - id: np.square.1
   name: Square Access Token
   category: secret
@@ -7174,6 +7331,7 @@ rules:
   replacement_type: faker_api_key
   description: ''
   severity: high
+  literal_prefix: sq0atp-
 - id: np.square.2
   name: Square OAuth Secret
   category: secret
@@ -7190,6 +7348,7 @@ rules:
   replacement_type: faker_api_key
   description: ''
   severity: high
+  literal_prefix: sq0csp-
 - id: np.stackhawk.1
   name: StackHawk API Key
   category: secret
@@ -7206,6 +7365,7 @@ rules:
   replacement_type: faker_api_key
   description: ''
   severity: high
+  literal_prefix: hawk.
 - id: np.tavily.1
   name: Tavily API Key
   category: secret
@@ -7390,6 +7550,7 @@ rules:
   replacement_type: faker_api_key
   description: ''
   severity: high
+  literal_prefix: twilio
 - id: np.twitch.1
   name: Twitch Stream Key
   category: secret
@@ -7505,6 +7666,7 @@ rules:
   replacement_type: faker_api_key
   description: ''
   severity: high
+  literal_prefix: PrivateKey
 - id: np.wireguard.2
   name: WireGuard Preshared Key
   category: secret
@@ -7519,6 +7681,7 @@ rules:
   replacement_type: faker_api_key
   description: ''
   severity: high
+  literal_prefix: PresharedKey
 - id: spdb.american-express-credit-card
   name: american_express_credit-card
   category: pii
@@ -7539,7 +7702,7 @@ rules:
   subcategory: email
   source: secrets-patterns-db
   confidence: high
-  regex: ([a-z0-9!#$%&'*+\/=?^_`{|.}~-]+@(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)*(?:[a-z0-9-]{1,6}|[a-z0-9-]{8,}|[a-z0-9-]*[0-9][a-z0-9-]*|[a-df-z][a-z0-9-]{6}|e[a-wyz0-9][a-z0-9-]{5}|ex[b-z0-9][a-z0-9-]{4}|exa[b-z0-9][a-z0-9-]{3}|exam[b-z0-9][a-z0-9-]{2}|examp[b-z0-9][a-z0-9-]|exampl[a-df-z0-9])\.(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?))
+  regex: ([a-z0-9!#$%&'*+\/=?^_`{|.}~-]+@(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)*(?:[a-z0-9-]{1,6}|[a-z0-9-]{8,}|[a-z0-9-]*[0-9][a-z0-9-]*|[a-df-z][a-z0-9-]{6}|e[a-wyz0-9][a-z0-9-]{5}|ex[b-z0-9][a-z0-9-]{4}|exa[a-ln-z0-9][a-z0-9-]{3}|exam[a-oq-z0-9][a-z0-9-]{2}|examp[a-km-z0-9][a-z0-9-]|exampl[a-df-z0-9])\.(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?))
   keywords: []
   entropy: null
   tags: []

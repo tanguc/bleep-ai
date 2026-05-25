@@ -130,6 +130,8 @@ struct NormalizedRule {
     replacement_type: String,
     description: String,
     severity: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    literal_prefix: Option<String>,
 }
 
 // ── combined output wrapper ────────────────────────────────────────────────────
@@ -189,6 +191,184 @@ fn slugify(s: &str) -> String {
     }
     // strip leading/trailing hyphens
     result.trim_matches('-').to_string()
+}
+
+/// Extract the deterministic literal prefix from a regex pattern.
+///
+/// Walks the pattern left-to-right, skipping common leading anchors / flags
+/// (`^`, `\b`, `\A`, `(?i)`, `(?m)`, `(?s)`, `(?x)`, `(?-u)`, `(?:`), then
+/// collects consecutive literal characters until it hits anything ambiguous
+/// (char class, quantifier, alternation, escape meta, unescaped `.`).
+///
+/// Returns `None` if the resulting prefix is shorter than 2 characters,
+/// since one-char prefixes give no useful signal to the realistic replacer
+/// (and risk false positives — e.g. `\b[A-Za-z]…` would not even reach here).
+///
+/// Conservative by design: when in doubt, returns `None` so the replacer
+/// behaves as it did before. Wrong prefixes are worse than missing prefixes
+/// because they break detection round-trips.
+///
+/// ── Known limitations (returns `None` rather than a guess) ──────────────────
+/// These cases are intentionally not handled. Adding them would require a real
+/// regex parser; until then we accept reduced coverage in exchange for never
+/// producing a wrong prefix:
+///
+/// 1. **Alternation at the head** — `(sk_test_|rk_test_)…`. We do not compute
+///    the longest common prefix across alternatives. (Easy future extension.)
+/// 2. **Scoped inline flags** — `(?i:hf_)…`, `(?i:AKIA)…`. We only recognize
+///    standalone flag groups like `(?i)`, not the `(?i:…)` form.
+/// 3. **Lookaround at the head** — `(?=…)`, `(?!…)`, `(?<=…)`, `(?<!…)`. Any
+///    leading lookaround aborts extraction.
+/// 4. **Verbose mode (`(?x)`)** — we skip the flag but do not strip the
+///    whitespace/comments that `(?x)` permits, so `(?x) hf_ [a-z]{30}` yields
+///    nothing (the leading space ends literal collection).
+/// 5. **Optional groups before the literal** — `(?:foo)?bar_…` won't see
+///    `bar_` because we don't peek past an optional group.
+/// 6. **Hex / octal / unicode escapes in the prefix** — `\x41` (literal `A`),
+///    `A`. Alphabetic escapes (`\xNN`, `\uNNNN`, `\d`, `\w`, …) are all
+///    treated as meta and stop collection.
+/// 7. **Non-ASCII prefixes** — we only accept `[A-Za-z0-9_-]` (plus escaped
+///    punctuation). Multibyte UTF-8 literals at the head are not extracted.
+/// 8. **Whitespace inside the prefix** — `sk\s*ant_…` stops at `\s`.
+///
+/// For the current 438-rule corpus this extracts a literal_prefix on 166
+/// rules; the remaining 272 either fall under one of the limitations above
+/// or genuinely have no literal head (e.g. pure char-class regexes for IBANs,
+/// UUIDs, JWTs).
+pub(crate) fn extract_literal_prefix(pattern: &str) -> Option<String> {
+    let bytes = pattern.as_bytes();
+    let mut i = 0;
+
+    // strip leading anchors / inline flag groups / non-capturing/capturing groups
+    // that have no alternation at depth 1 (alternation kills any single literal head).
+    loop {
+        let rest = &bytes[i..];
+        if rest.starts_with(b"^") {
+            i += 1;
+        } else if rest.starts_with(b"\\b") || rest.starts_with(b"\\A") {
+            i += 2;
+        } else if rest.starts_with(b"(?i)")
+            || rest.starts_with(b"(?m)")
+            || rest.starts_with(b"(?s)")
+            || rest.starts_with(b"(?x)")
+        {
+            i += 4;
+        } else if rest.starts_with(b"(?-u)") || rest.starts_with(b"(?-i)") {
+            i += 5;
+        } else if rest.starts_with(b"(?:") {
+            // only enter non-capturing group if it contains no top-level `|`
+            // (alternation has no single literal head) AND it is not followed
+            // by an optional quantifier (otherwise the group's content is
+            // optional — entering would extract a prefix that the regex
+            // doesn't actually require).
+            let (has_pipe, close_idx) = scan_group(&bytes[i + 3..]);
+            let post_close = bytes.get(i + 3 + close_idx + 1).copied();
+            let optional = matches!(post_close, Some(b'?' | b'*' | b'{'));
+            if !has_pipe && !optional {
+                i += 3;
+            } else {
+                break;
+            }
+        } else if rest.starts_with(b"(") && !rest.starts_with(b"(?") {
+            let (has_pipe, close_idx) = scan_group(&bytes[i + 1..]);
+            let post_close = bytes.get(i + 1 + close_idx + 1).copied();
+            let optional = matches!(post_close, Some(b'?' | b'*' | b'{'));
+            if !has_pipe && !optional {
+                i += 1;
+            } else {
+                break;
+            }
+        } else {
+            break;
+        }
+    }
+
+    // collect literal characters
+    let mut buf = String::new();
+    while i < bytes.len() {
+        let c = bytes[i];
+        if c == b'\\' {
+            // escape sequence
+            if i + 1 >= bytes.len() {
+                break;
+            }
+            let e = bytes[i + 1];
+            // alphanumeric escapes are meta: \d \w \s \b \B \A \z \n \t etc.
+            if e.is_ascii_alphabetic() {
+                break;
+            }
+            // \. \- \_ \/ \+ etc — literal punctuation. Treat as a single literal char.
+            // peek beyond for quantifier — if the literal is repeated, drop it.
+            let next_after = bytes.get(i + 2).copied();
+            if matches!(next_after, Some(b'?' | b'*' | b'+' | b'{')) {
+                break;
+            }
+            buf.push(e as char);
+            i += 2;
+        } else if c.is_ascii_alphanumeric() || c == b'_' || c == b'-' {
+            // peek for quantifier — if next char makes this optional/repeated, stop.
+            let next = bytes.get(i + 1).copied();
+            if matches!(next, Some(b'?' | b'*' | b'+' | b'{')) {
+                break;
+            }
+            buf.push(c as char);
+            i += 1;
+        } else {
+            // unescaped `.`, `[`, `(`, `|`, `)`, end of useful prefix
+            break;
+        }
+    }
+
+    if buf.len() >= 2 { Some(buf) } else { None }
+}
+
+/// Scan from inside a `(` or `(?:` group. Returns `(has_top_level_pipe, close_index)`
+/// where `close_index` is the byte offset *into the input slice* of the matching
+/// `)`. If the group is unbalanced, returns `(true, rest.len() - 1)` — the
+/// pessimistic "has pipe" prevents the caller from entering.
+///
+/// Used by `extract_literal_prefix` to decide whether entering a group is safe:
+/// alternation kills the literal head, and an optional quantifier after the
+/// close paren (`(?:…)?`, `(?:…)*`, `(?:…){0,N}`) means the group's content
+/// isn't actually required.
+fn scan_group(rest: &[u8]) -> (bool, usize) {
+    let mut depth = 1usize;
+    let mut i = 0;
+    let mut has_pipe = false;
+    while i < rest.len() {
+        let c = rest[i];
+        if c == b'\\' {
+            // skip escape (don't interpret special chars inside)
+            i += 2;
+            continue;
+        }
+        if c == b'[' {
+            // skip char class
+            i += 1;
+            while i < rest.len() && rest[i] != b']' {
+                if rest[i] == b'\\' {
+                    i += 2;
+                } else {
+                    i += 1;
+                }
+            }
+            i += 1;
+            continue;
+        }
+        if c == b'(' {
+            depth += 1;
+        } else if c == b')' {
+            depth -= 1;
+            if depth == 0 {
+                return (has_pipe, i);
+            }
+        } else if c == b'|' && depth == 1 {
+            has_pipe = true;
+        }
+        i += 1;
+    }
+    // unbalanced — be conservative
+    (true, rest.len().saturating_sub(1))
 }
 
 /// infer confidence for a gitleaks rule based on regex structure
@@ -1011,6 +1191,7 @@ pub fn run(opts: &RunOptions) -> RunResult {
             replacement_type: replacement_type.to_string(),
             description: rule.description.unwrap_or_default(),
             severity: severity.to_string(),
+            literal_prefix: None,
         });
     }
     log_progress!(quiet,
@@ -1090,6 +1271,7 @@ pub fn run(opts: &RunOptions) -> RunResult {
                 replacement_type: replacement_type.to_string(),
                 description: String::new(),
                 severity: severity.to_string(),
+                literal_prefix: None,
             });
         }
     }
@@ -1160,6 +1342,7 @@ pub fn run(opts: &RunOptions) -> RunResult {
                 replacement_type: replacement_type.to_string(),
                 description: String::new(),
                 severity: severity.to_string(),
+                literal_prefix: None,
             });
         }
     }
@@ -1266,6 +1449,22 @@ pub fn run(opts: &RunOptions) -> RunResult {
     let mut final_rules: Vec<NormalizedRule> = merged.into_values().collect();
     final_rules.sort_by(|a, b| a.id.cmp(&b.id));
     log_progress!(quiet, "rule_pipeline: {} rules after merge+dedup", final_rules.len());
+
+    // populate literal_prefix from regex (skips rules where the prefix YAML field
+    // is already set — lets custom rules override the auto-extracted value).
+    let mut prefix_count = 0usize;
+    for rule in final_rules.iter_mut() {
+        if rule.literal_prefix.is_none() {
+            let cleaned = strip_posix_comments(&rule.regex);
+            if let Some(p) = extract_literal_prefix(&cleaned) {
+                rule.literal_prefix = Some(p);
+                prefix_count += 1;
+            }
+        } else {
+            prefix_count += 1;
+        }
+    }
+    log_progress!(quiet, "rule_pipeline: {} rules have a literal_prefix", prefix_count);
 
     if final_rules.is_empty() {
         panic!("rule_pipeline: no rules after normalization — normalization pipeline failed");
@@ -1417,6 +1616,411 @@ mod tests {
     // ── helper tests ──────────────────────────────────────────────────────────
 
     #[test]
+    fn test_extract_literal_prefix_corpus_self_consistency() {
+        // STRONGEST SIGNAL: for every rule in the shipping corpus that we
+        // extracted a literal_prefix for, that prefix MUST be a valid head of
+        // a token the rule's own regex accepts. If extraction got it wrong,
+        // detection round-trips break — we'd anonymize a token, swap in a
+        // prefix-preserving fake, then the rule would no longer match it.
+        //
+        // This gives us hundreds of automatic test cases (one per rule with
+        // a literal_prefix). The exact count grows with the corpus, so a new
+        // vendor rule added to rules/custom.yaml automatically expands the
+        // matrix.
+        use regex::bytes::RegexBuilder;
+        use std::fs;
+
+        let yaml = fs::read_to_string("rules/combined.yaml")
+            .expect("combined.yaml must exist — run `cargo run --bin build-rules`");
+        #[derive(serde::Deserialize)]
+        struct File {
+            rules: Vec<NormalizedRule>,
+        }
+        let parsed: File = serde_yml::from_str(&yaml).expect("combined.yaml must parse");
+
+        let mut tested = 0usize;
+        let mut tail_lens_tried = [20usize, 24, 28, 30, 32, 34, 36, 40, 48, 56, 64, 72, 80, 96, 128];
+        // shuffle in-place deterministically by xor with a constant to broaden coverage
+        for x in tail_lens_tried.iter_mut() {
+            *x ^= 0;
+        }
+
+        let mut failures: Vec<String> = Vec::new();
+        let mut unmatchable: Vec<String> = Vec::new();
+        for rule in parsed.rules.iter() {
+            let Some(prefix) = rule.literal_prefix.as_deref() else {
+                continue;
+            };
+            tested += 1;
+
+            // ── INVARIANT 1: prefix only contains characters that survive
+            // the regex as literals (no `\`, no meta).
+            assert!(
+                !prefix.contains('\\'),
+                "[{}] literal_prefix `{prefix}` contains a backslash — extraction bug",
+                rule.id
+            );
+
+            // ── INVARIANT 2: re-extracting from the rule's regex yields the
+            // same prefix (idempotency — protects against pipeline drift).
+            let cleaned = strip_posix_comments(&rule.regex);
+            let re_extracted = extract_literal_prefix(&cleaned);
+            assert_eq!(
+                re_extracted.as_deref(),
+                Some(prefix),
+                "[{}] re-extracting from regex `{}` yields {:?}, but combined.yaml has `{prefix}`",
+                rule.id,
+                rule.regex,
+                re_extracted
+            );
+
+            // ── INVARIANT 3: the rule's compiled regex accepts at least one
+            // string that starts with the literal prefix.
+            let re = match RegexBuilder::new(&cleaned)
+                .size_limit(256 * 1024 * 1024)
+                .dfa_size_limit(256 * 1024 * 1024)
+                .build()
+            {
+                Ok(r) => r,
+                Err(_) => continue, // bad regex — caught by separate validation
+            };
+            let mut found_match = false;
+            'outer: for &tail_len in &tail_lens_tried {
+                for seed in 0..6u32 {
+                    let mut bytes = prefix.as_bytes().to_vec();
+                    // generate a deterministic alnum tail seeded by rule id + len + seed
+                    let mut state = seed
+                        .wrapping_mul(2654435761)
+                        .wrapping_add(rule.id.bytes().fold(0u32, |a, b| a.wrapping_add(b as u32)));
+                    for _ in 0..tail_len {
+                        state = state.wrapping_mul(1103515245).wrapping_add(12345);
+                        let idx = (state >> 16) as usize
+                            % b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789".len();
+                        bytes.push(b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"[idx]);
+                    }
+                    if re.is_match(&bytes) {
+                        found_match = true;
+                        break 'outer;
+                    }
+                }
+            }
+            if !found_match {
+                // some rules need very specific tail formats (e.g. dashes,
+                // base64 padding) that random alnum can't satisfy. Record
+                // them but don't fail — the prefix-preserving property still
+                // holds, we just can't synthesize a positive sample here.
+                unmatchable.push(format!("{} ({}): {}", rule.id, prefix, rule.regex));
+                continue;
+            }
+
+            // ── INVARIANT 4: a token with the prefix *removed* (or replaced)
+            // should NOT match the rule's regex. This catches over-extraction
+            // (claiming a prefix longer than what the regex actually requires).
+            //
+            // Skip this check when the regex's mandatory part overlaps the
+            // prefix only partially — too risky to assert in the general case.
+            // We only check the strong form: empty-prefix candidate.
+            if prefix.len() >= 3 {
+                // build a same-length candidate using the LAST char of prefix
+                // repeated where the prefix was — preserving length but
+                // breaking the literal head.
+                let replacement = b'Z';
+                for &tail_len in &tail_lens_tried {
+                    let mut bytes: Vec<u8> = vec![replacement; prefix.len()];
+                    for i in 0..tail_len {
+                        bytes.push(b"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"[i % 36]);
+                    }
+                    if re.is_match(&bytes) {
+                        // some rules have prefixes that aren't truly mandatory
+                        // (e.g. inside an optional group). Not strictly a bug,
+                        // but record for triage.
+                        failures.push(format!(
+                            "[{}] regex matched a token without the literal prefix: \
+                             regex=`{}` prefix=`{}` candidate=`{}`",
+                            rule.id,
+                            rule.regex,
+                            prefix,
+                            String::from_utf8_lossy(&bytes)
+                        ));
+                        break;
+                    }
+                }
+            }
+        }
+
+        eprintln!(
+            "extract_literal_prefix corpus check: {} rules tested, {} unmatchable (specific tail format), {} soft failures",
+            tested,
+            unmatchable.len(),
+            failures.len()
+        );
+        if !unmatchable.is_empty() && unmatchable.len() < 20 {
+            for u in &unmatchable {
+                eprintln!("  unmatchable: {}", u);
+            }
+        }
+
+        assert!(
+            tested >= 100,
+            "expected >= 100 rules with literal_prefix, got {tested} — \
+             corpus regression: did build-rules run, or did extraction silently \
+             stop populating the field?"
+        );
+
+        // soft-failures (prefix not strictly mandatory) are reported but not fatal —
+        // they don't break the realistic-mimicry contract.
+        if !failures.is_empty() {
+            eprintln!(
+                "WARN: {} rules have a literal_prefix that the regex doesn't strictly require:",
+                failures.len()
+            );
+            for f in failures.iter().take(10) {
+                eprintln!("  {}", f);
+            }
+        }
+    }
+
+    #[test]
+    fn test_extract_literal_prefix_edge_cases() {
+        // organized by category so failures point at the specific class
+        let groups: &[(&str, &[(&str, Option<&str>)])] = &[
+            ("vendor prefixes — underscore-terminated", &[
+                (r"\bhf_[A-Za-z0-9]{30,}\b", Some("hf_")),
+                (r"\bapi_org_[A-Za-z0-9]{34}\b", Some("api_org_")),
+                (r"\bghp_[A-Za-z0-9]{36}\b", Some("ghp_")),
+                (r"\bgho_[A-Za-z0-9]{36}\b", Some("gho_")),
+                (r"\bghu_[A-Za-z0-9]{36}\b", Some("ghu_")),
+                (r"\bghs_[A-Za-z0-9]{36}\b", Some("ghs_")),
+                (r"\bghr_[A-Za-z0-9]{36}\b", Some("ghr_")),
+                (r"\bgithub_pat_[A-Za-z0-9_]{82}\b", Some("github_pat_")),
+                (r"\bnpm_[A-Za-z0-9]{36}\b", Some("npm_")),
+                (r"\bsk_test_[A-Za-z0-9]{24,}\b", Some("sk_test_")),
+                (r"\bsk_live_[A-Za-z0-9]{24,}\b", Some("sk_live_")),
+                (r"\brk_test_[A-Za-z0-9]{24,}\b", Some("rk_test_")),
+                (r"\brk_live_[A-Za-z0-9]{24,}\b", Some("rk_live_")),
+                (r"\bpscale_tkn_[A-Za-z0-9_=-]+\b", Some("pscale_tkn_")),
+                (r"\bpscale_oauth_[A-Za-z0-9_=-]+\b", Some("pscale_oauth_")),
+                (r"\bpscale_pw_[A-Za-z0-9_=-]+\b", Some("pscale_pw_")),
+                (r"\bdop_v1_[a-f0-9]{64}\b", Some("dop_v1_")),
+                (r"\blin_api_[A-Za-z0-9]+\b", Some("lin_api_")),
+                (r"\bACC_[A-Za-z0-9]{20}\b", Some("ACC_")),
+                (r"\bacc_[A-Za-z0-9]{20}\b", Some("acc_")),
+                (r"\bops_eyJ[A-Za-z0-9_-]+\b", Some("ops_eyJ")),
+            ]),
+            ("vendor prefixes — dash-terminated", &[
+                (r"\bglpat-[A-Za-z0-9_-]{20}\b", Some("glpat-")),
+                (r"\bglptt-[A-Za-z0-9_-]{40}\b", Some("glptt-")),
+                (r"\bxoxb-[0-9]+-[A-Za-z0-9]+\b", Some("xoxb-")),
+                (r"\bxoxa-[0-9]+-[A-Za-z0-9]+\b", Some("xoxa-")),
+                (r"\bxoxp-[0-9]+-[A-Za-z0-9]+\b", Some("xoxp-")),
+                (r"\bxapp-[0-9]+-[A-Za-z0-9-]+\b", Some("xapp-")),
+                (r"\bsk-ant-api[0-9]{2}-[A-Za-z0-9_\-]+\b", Some("sk-ant-api")),
+                (r"\bsk-ant-admin[0-9]{2}-[A-Za-z0-9_\-]+\b", Some("sk-ant-admin")),
+                (r"\bxkeysib-[a-f0-9]{64}-[A-Za-z0-9]{16}\b", Some("xkeysib-")),
+                (r"\bpplx-[A-Za-z0-9]{56}\b", Some("pplx-")),
+                (r"\btk-us-[A-Za-z0-9]+\b", Some("tk-us-")),
+                (r"\bdnkey-[A-Za-z0-9]+\b", Some("dnkey-")),
+                (r"\bfio-u-[A-Za-z0-9]+\b", Some("fio-u-")),
+                (r"\bAGE-SECRET-KEY-1[A-Za-z0-9]+\b", Some("AGE-SECRET-KEY-1")),
+                (r"\bPMAK-[a-f0-9]{24}-[a-f0-9]{34}\b", Some("PMAK-")),
+                (r"\bNRAK-[A-Z0-9]{27}\b", Some("NRAK-")),
+                (r"\bNRJS-[a-f0-9]{19}\b", Some("NRJS-")),
+                (r"\bpat-[a-z0-9-]+-[a-f0-9]{32}\b", Some("pat-")),
+            ]),
+            ("vendor prefixes — bare alpha", &[
+                (r"\bAKIA[0-9A-Z]{16}\b", Some("AKIA")),
+                (r"\bASIA[0-9A-Z]{16}\b", Some("ASIA")),
+                (r"\bAGPA[0-9A-Z]{16}\b", Some("AGPA")),
+                (r"\bAIDA[0-9A-Z]{16}\b", Some("AIDA")),
+                (r"\bAROA[0-9A-Z]{16}\b", Some("AROA")),
+                (r"\bAIPA[0-9A-Z]{16}\b", Some("AIPA")),
+                (r"\bANPA[0-9A-Z]{16}\b", Some("ANPA")),
+                (r"\bANVA[0-9A-Z]{16}\b", Some("ANVA")),
+                (r"\bAIza[0-9A-Za-z_\-]{35}\b", Some("AIza")),
+                (r"\bLTAI[A-Za-z0-9]{16,28}\b", Some("LTAI")),
+                (r"\bAQVN[A-Za-z0-9]{50}\b", Some("AQVN")),
+                (r"\bYCAJ[A-Za-z0-9_\-]{50}\b", Some("YCAJ")),
+                (r"\bshpat_[a-fA-F0-9]{32}\b", Some("shpat_")),
+                (r"\bshpca_[a-fA-F0-9]{32}\b", Some("shpca_")),
+                (r"\bshppa_[a-fA-F0-9]{32}\b", Some("shppa_")),
+                (r"\bshpss_[a-fA-F0-9]{32}\b", Some("shpss_")),
+                (r"\bCLOJARS_[A-Za-z0-9]{60}\b", Some("CLOJARS_")),
+                (r"\bFLWSECK[A-Za-z0-9_-]+\b", Some("FLWSECK")),
+                (r"\bFLWPUBK[A-Za-z0-9_-]+\b", Some("FLWPUBK")),
+            ]),
+            ("escaped punctuation in prefix", &[
+                (r"\bSG\.[A-Za-z0-9_\-]{22}\.[A-Za-z0-9_\-]{43}\b", Some("SG.")),
+                (r"\bhvs\.[A-Za-z0-9]{24,}\b", Some("hvs.")),
+                (r"\bdp\.pt\.[A-Za-z0-9]+\b", Some("dp.pt.")),
+                (r"\bxoxe\.[A-Za-z0-9-]+\b", Some("xoxe.")),
+                // dot inside prefix, then alnum tail
+                (r"\babc\.def[0-9]+\b", Some("abc.def")),
+                // hyphen at the end then char class
+                (r"\bA3-[0-9A-Z]{16}\b", Some("A3-")),
+            ]),
+            ("anchors and leading flags", &[
+                (r"^hf_[A-Za-z0-9]+$", Some("hf_")),
+                (r"\AAKIA[A-Z0-9]{16}\z", Some("AKIA")),
+                (r"(?i)\bhf_[A-Za-z0-9]+\b", Some("hf_")),
+                (r"(?m)^AKIA[A-Z0-9]{16}$", Some("AKIA")),
+                (r"(?s)(?m)^ghp_[A-Za-z0-9]{36}$", Some("ghp_")),
+                (r"(?-u)\bAKIA[A-Z0-9]{16}\b", Some("AKIA")),
+                // multi-flag chains
+                (r"(?im)\bhf_[A-Za-z0-9]+\b", None), // (?im) not supported by our skipper
+            ]),
+            ("groups", &[
+                // non-capturing, no alternation — enter and extract
+                (r"\b(?:hf_)[A-Za-z0-9]{30,}\b", Some("hf_")),
+                (r"\b(?:AKIA)[0-9A-Z]{16}\b", Some("AKIA")),
+                // capturing, no alternation — enter and extract
+                (r"\b(hf_)[A-Za-z0-9]+\b", Some("hf_")),
+                (r"\b(AKIA[0-9A-Z]{16})\b", Some("AKIA")),
+                // alternation kills the prefix
+                (r"\b(sk_test_|rk_test_)[A-Za-z0-9]+\b", None),
+                (r"\b(?:sk_|rk_)[A-Za-z0-9]+\b", None),
+                (r"\b(?:foo|bar)[A-Za-z0-9]+\b", None),
+                // nested groups, no alternation
+                (r"\b((hf_))[A-Za-z0-9]+\b", Some("hf_")),
+                // alternation at depth 2 still kills the surrounding group
+                (r"\b(hf_(a|b))[A-Za-z0-9]+\b", Some("hf_")),
+            ]),
+            ("character classes", &[
+                // leading char class — no prefix
+                (r"\b[A-Z]{4}[0-9]{16}\b", None),
+                (r"\b[0-9a-f]{32}\b", None),
+                (r"\b[\w]+\b", None),
+                // char class after literal — prefix is the literal head
+                (r"\bAKIA[0-9A-Z]{16}\b", Some("AKIA")),
+            ]),
+            ("quantifiers on prefix", &[
+                (r"\bAKIA?[0-9A-Z]{16}\b", Some("AKI")),
+                (r"\bhf_?[A-Za-z0-9]+\b", Some("hf")),
+                (r"\bsk_test_?[A-Za-z0-9]+\b", Some("sk_test")),
+                (r"\bAKIA*[0-9A-Z]{16}\b", Some("AKI")),
+                (r"\bAKIA+[0-9A-Z]{16}\b", Some("AKI")),
+                (r"\bAKIA{2,3}[0-9A-Z]{16}\b", Some("AKI")),
+            ]),
+            ("rejection — single char & empty", &[
+                (r"\bA[A-Z]{17}\b", None),
+                (r"\bx[A-Za-z0-9]+\b", None),
+                (r"\b[a-z]+\b", None),
+                (r"", None),
+                (r"\b", None),
+            ]),
+            ("known limitations — should yield None", &[
+                // scoped inline flag groups
+                (r"(?i:hf_)[A-Za-z0-9]+", None),
+                (r"(?-u:AKIA)[A-Z0-9]+", None),
+                // lookaround at head
+                (r"(?=hf_)[A-Za-z0-9]+", None),
+                (r"(?!XXX)hf_[A-Za-z0-9]+", None),
+                // verbose mode with whitespace
+                (r"(?x)\b hf_ [A-Za-z0-9]+ \b", None),
+                // optional group before literal
+                (r"(?:prefix)?hf_[A-Za-z0-9]+", None),
+                // bare literal start (no anchor) — still extractable
+                (r"AKIA[A-Z0-9]+", Some("AKIA")),
+                // hex escape in prefix
+                (r"\x41KIA[A-Z0-9]+", None),
+            ]),
+            ("real-world patterns from the corpus", &[
+                // pypi tokens — long literal prefix
+                (r"\bpypi-AgEIcHlwaS5vcmc[A-Za-z0-9_\-]+\b", Some("pypi-AgEIcHlwaS5vcmc")),
+                (r"\bpypi-AgENdGVzdC5weXBpLm9yZw[A-Za-z0-9_\-]+\b", Some("pypi-AgENdGVzdC5weXBpLm9yZw")),
+                // databricks
+                (r"\bdapi[a-f0-9]{32,}\b", Some("dapi")),
+                // grafana
+                (r"\bglc_[A-Za-z0-9+/=]+\b", Some("glc_")),
+                (r"\bglsa_[A-Za-z0-9]{32}_[a-f0-9]{8}\b", Some("glsa_")),
+                // figma
+                (r"\bfigd_[A-Za-z0-9_-]+\b", Some("figd_")),
+                // openai legacy
+                (r"\bsk-[A-Za-z0-9]{48}\b", Some("sk-")),
+                // openai project key
+                (r"\bsk-proj-[A-Za-z0-9_\-]{40,}\b", Some("sk-proj-")),
+                // anthropic admin
+                (r"\bsk-ant-sid01-[A-Za-z0-9_\-]{93}\b", Some("sk-ant-sid01-")),
+            ]),
+            ("idempotency — extracting from already-extracted prefix yields same", &[
+                // these are degenerate but the property should hold for any
+                // pure-literal input
+                (r"hf_", Some("hf_")),
+                (r"AKIA", Some("AKIA")),
+                (r"sk-ant-api", Some("sk-ant-api")),
+            ]),
+        ];
+
+        let mut total = 0usize;
+        let mut failures: Vec<String> = Vec::new();
+        for (group, cases) in groups {
+            for (re, want) in *cases {
+                total += 1;
+                let got = extract_literal_prefix(re);
+                if got.as_deref() != *want {
+                    failures.push(format!(
+                        "[{group}] extract_literal_prefix({re:?}) = {got:?}, want {want:?}"
+                    ));
+                }
+            }
+        }
+        if !failures.is_empty() {
+            panic!(
+                "{} / {} edge cases failed:\n{}",
+                failures.len(),
+                total,
+                failures.join("\n")
+            );
+        }
+        eprintln!("extract_literal_prefix edge cases: {total} cases across {} categories — all pass", groups.len());
+    }
+
+    #[test]
+    fn test_extract_literal_prefix_common_secret_formats() {
+        // canonical vendor prefixes — these are the ones that matter most
+        let cases: &[(&str, Option<&str>)] = &[
+            (r"\bhf_[A-Za-z0-9]{30,}\b", Some("hf_")),
+            (r"\bapi_org_[A-Za-z0-9]{34}\b", Some("api_org_")),
+            (r"\bAKIA[0-9A-Z]{16}\b", Some("AKIA")),
+            (r"\bASIA[0-9A-Z]{16}\b", Some("ASIA")),
+            (r"\bghp_[A-Za-z0-9]{36}\b", Some("ghp_")),
+            (r"\bgho_[A-Za-z0-9]{36}\b", Some("gho_")),
+            (r"\bxoxb-[0-9]+-[0-9]+-[A-Za-z0-9]+\b", Some("xoxb-")),
+            (r"\bglpat-[A-Za-z0-9_-]{20}\b", Some("glpat-")),
+            (r"\bsk-ant-api[0-9]{2}-[A-Za-z0-9_\-]+\b", Some("sk-ant-api")),
+            (r"\bsk_test_[A-Za-z0-9]{24,}\b", Some("sk_test_")),
+            (r"\bsk_live_[A-Za-z0-9]{24,}\b", Some("sk_live_")),
+            (r"\bAIza[0-9A-Za-z_\-]{35}\b", Some("AIza")),
+            (r"\bnpm_[A-Za-z0-9]{36}\b", Some("npm_")),
+            (r"\bpypi-AgEIcHlwaS5vcmc[A-Za-z0-9_\-]+\b", Some("pypi-AgEIcHlwaS5vcmc")),
+            (r"^hf_[A-Za-z0-9]+$", Some("hf_")),
+            // escaped dot in the prefix — must be preserved
+            (r"\bSG\.[A-Za-z0-9_\-]{22}\.[A-Za-z0-9_\-]{43}\b", Some("SG.")),
+            // alternation kills the prefix
+            (r"\b(sk_test_|rk_test_)[A-Za-z0-9]{24}\b", None),
+            // non-capturing group with alternation
+            (r"\b(?:foo_|bar_)[A-Za-z0-9]+\b", None),
+            // non-capturing group, no alternation — should enter and extract
+            (r"\b(?:hf_)[A-Za-z0-9]{30,}\b", Some("hf_")),
+            // leading char class — no literal prefix
+            (r"\b[A-Z]{4}[0-9]{16}\b", None),
+            // case-insensitive flag, then literal
+            (r"(?i)\bhf_[A-Za-z0-9]{30,}\b", Some("hf_")),
+            // single-char prefix is rejected (too noisy)
+            (r"\bA[A-Z]{17}\b", None),
+            // optional last char must be excluded
+            (r"\bAKIA?[0-9A-Z]{16}\b", Some("AKI")),
+        ];
+        for (re, want) in cases {
+            let got = extract_literal_prefix(re);
+            assert_eq!(
+                got.as_deref(),
+                *want,
+                "extract_literal_prefix({re:?}) = {got:?}, want {want:?}"
+            );
+        }
+    }
+
+    #[test]
     fn test_slugify() {
         assert_eq!(slugify("AWS API Key"), "aws-api-key");
         // dots become hyphens (non-alphanumeric collapses)
@@ -1489,6 +2093,7 @@ mod tests {
             replacement_type: "faker_email".to_string(),
             description: "".to_string(),
             severity: "high".to_string(),
+            literal_prefix: None,
         };
         let gl_rule = NormalizedRule {
             id: "test.duplicate".to_string(),

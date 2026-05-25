@@ -19,7 +19,12 @@ use std::sync::OnceLock;
 /// `original` is the raw matched bytes — needed for length-preserving and value-aware fakers.
 ///
 /// returns a JSON-safe string ready for splicing into the body.
-pub fn generate(replacement_type: &str, rule_id: &str, original: &[u8]) -> String {
+pub fn generate(
+    replacement_type: &str,
+    rule_id: &str,
+    original: &[u8],
+    literal_prefix: Option<&str>,
+) -> String {
     match replacement_type {
         "faker_email" => fake_email(original),
         "faker_phone" => fake_phone(original),
@@ -31,14 +36,46 @@ pub fn generate(replacement_type: &str, rule_id: &str, original: &[u8]) -> Strin
         "faker_aws_key" => fake_aws_key(original),
         "faker_github_pat" => fake_github_pat(original),
         "faker_jwt" => fake_jwt(original),
-        "faker_api_key" => fake_api_key(original),
+        "faker_api_key" => with_literal_prefix(original, literal_prefix, fake_api_key),
         "faker_db_conn" => fake_db_conn(std::str::from_utf8(original).unwrap_or("")),
         "faker_url_cred" => fake_url_cred(std::str::from_utf8(original).unwrap_or("")),
         "fpe_numeric" => fake_fpe_numeric(original),
-        "generic_random" => fake_generic_random(original),
+        "generic_random" => with_literal_prefix(original, literal_prefix, fake_generic_random),
         "passthrough" => unreachable!("passthrough is checked by apply() before calling generate"),
         _ => format!("[REDACTED:{rule_id}]"),
     }
+}
+
+/// Wrap a realistic fake generator so the rule's literal prefix (e.g. `hf_`,
+/// `AKIA`) is preserved verbatim in the output. Only kicks in when:
+///   - `literal_prefix` is provided (set by build-rules from the regex)
+///   - `original` actually starts with that prefix (sanity check — the regex
+///     matched, so this should almost always be true)
+///   - we have at least one byte beyond the prefix to randomize
+///   - visible-marker mode is OFF (visible mode is intentionally non-realistic)
+///
+/// Without this wrap, `fake_api_key_realistic` re-rolls every alphanumeric in
+/// the input — which silently destroys the vendor prefix and produces a fake
+/// that no longer matches the rule's regex, breaking downstream re-detection
+/// and undermining the realistic-mimicry design.
+fn with_literal_prefix<F: Fn(&[u8]) -> String>(
+    original: &[u8],
+    literal_prefix: Option<&str>,
+    f: F,
+) -> String {
+    if !markers_visible() {
+        if let Some(p) = literal_prefix {
+            let pb = p.as_bytes();
+            if !pb.is_empty() && original.len() > pb.len() && original.starts_with(pb) {
+                let rest_fake = f(&original[pb.len()..]);
+                let mut s = String::with_capacity(pb.len() + rest_fake.len());
+                s.push_str(p);
+                s.push_str(&rest_fake);
+                return s;
+            }
+        }
+    }
+    f(original)
 }
 
 // ── env var toggle ─────────────────────────────────────────────────────────────
@@ -1332,7 +1369,7 @@ mod tests {
             ("generic_random", b"ABCDEF1234"),
         ];
         for (rt, original) in &types {
-            let fake = generate(rt, "test-rule", original);
+            let fake = generate(rt, "test-rule", original, None);
             let json_str = format!("\"{}\"", fake.replace('\\', "\\\\").replace('"', "\\\""));
             serde_json::from_str::<serde_json::Value>(&json_str).unwrap_or_else(|e| {
                 panic!("{} produced non-JSON-safe value {:?}: {}", rt, fake, e)
