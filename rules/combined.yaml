@@ -2847,6 +2847,7 @@ rules:
   replacement_type: faker_api_key
   description: Found an OpenAI API Key, posing a risk of unauthorized access to AI services and data manipulation.
   severity: medium
+  literal_prefix: sk-
 - id: gl.openshift-user-token
   name: Found an OpenShift user token, potentially compromising an OpenShift/Kubernetes cluster.
   category: secret
@@ -4309,6 +4310,7 @@ rules:
   replacement_type: faker_aws_key
   description: ''
   severity: medium
+  literal_prefix: aws
 - id: np.aws.5
   name: Amazon MWS Auth Token
   category: secret
@@ -5396,6 +5398,7 @@ rules:
   replacement_type: faker_github_pat
   description: ''
   severity: high
+  literal_prefix: gh
 - id: np.github.4
   name: GitHub Refresh Token
   category: secret

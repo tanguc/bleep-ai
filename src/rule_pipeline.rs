@@ -213,8 +213,9 @@ fn slugify(s: &str) -> String {
 /// regex parser; until then we accept reduced coverage in exchange for never
 /// producing a wrong prefix:
 ///
-/// 1. **Alternation at the head** — `(sk_test_|rk_test_)…`. We do not compute
-///    the longest common prefix across alternatives. (Easy future extension.)
+/// 1. **Alternation with no common literal head** — `(foo|bar)…` returns
+///    `None`. Alternation WITH a common head (`(sk_test_|sk_live_)…` → `sk_`)
+///    IS handled via longest-common-prefix across alternatives.
 /// 2. **Scoped inline flags** — `(?i:hf_)…`, `(?i:AKIA)…`. We only recognize
 ///    standalone flag groups like `(?i)`, not the `(?i:…)` form.
 /// 3. **Lookaround at the head** — `(?=…)`, `(?!…)`, `(?<=…)`, `(?<!…)`. Any
@@ -255,29 +256,45 @@ pub(crate) fn extract_literal_prefix(pattern: &str) -> Option<String> {
             i += 4;
         } else if rest.starts_with(b"(?-u)") || rest.starts_with(b"(?-i)") {
             i += 5;
-        } else if rest.starts_with(b"(?:") {
-            // only enter non-capturing group if it contains no top-level `|`
-            // (alternation has no single literal head) AND it is not followed
-            // by an optional quantifier (otherwise the group's content is
-            // optional — entering would extract a prefix that the regex
-            // doesn't actually require).
-            let (has_pipe, close_idx) = scan_group(&bytes[i + 3..]);
-            let post_close = bytes.get(i + 3 + close_idx + 1).copied();
+        } else if rest.starts_with(b"(?:") || (rest.starts_with(b"(") && !rest.starts_with(b"(?")) {
+            // capturing or non-capturing group
+            let group_start = if rest.starts_with(b"(?:") { i + 3 } else { i + 1 };
+            let (has_pipe, close_idx) = scan_group(&bytes[group_start..]);
+            let post_close = bytes.get(group_start + close_idx + 1).copied();
             let optional = matches!(post_close, Some(b'?' | b'*' | b'{'));
-            if !has_pipe && !optional {
-                i += 3;
-            } else {
+            if optional {
+                // group content isn't required by the regex — entering would
+                // extract a prefix the regex doesn't actually mandate.
                 break;
             }
-        } else if rest.starts_with(b"(") && !rest.starts_with(b"(?") {
-            let (has_pipe, close_idx) = scan_group(&bytes[i + 1..]);
-            let post_close = bytes.get(i + 1 + close_idx + 1).copied();
-            let optional = matches!(post_close, Some(b'?' | b'*' | b'{'));
-            if !has_pipe && !optional {
-                i += 1;
-            } else {
-                break;
+            if has_pipe {
+                // alternation: compute longest common prefix across alternatives.
+                // any alternative whose own prefix is `None` collapses LCP to nothing.
+                let body = &bytes[group_start..group_start + close_idx];
+                let alts = split_top_level_alternatives(body);
+                let mut alt_prefixes: Vec<String> = Vec::with_capacity(alts.len());
+                let mut all_extractable = true;
+                for alt in &alts {
+                    let Ok(s) = std::str::from_utf8(alt) else {
+                        all_extractable = false;
+                        break;
+                    };
+                    match extract_literal_prefix(s) {
+                        Some(p) => alt_prefixes.push(p),
+                        None => {
+                            all_extractable = false;
+                            break;
+                        }
+                    }
+                }
+                if !all_extractable || alt_prefixes.is_empty() {
+                    return None;
+                }
+                let lcp = longest_common_prefix(&alt_prefixes);
+                return if lcp.len() >= 2 { Some(lcp) } else { None };
             }
+            // no pipe — enter the group and continue
+            i = group_start;
         } else {
             break;
         }
@@ -369,6 +386,67 @@ fn scan_group(rest: &[u8]) -> (bool, usize) {
     }
     // unbalanced — be conservative
     (true, rest.len().saturating_sub(1))
+}
+
+/// Split a regex group body on top-level `|` characters, respecting escapes,
+/// nested groups, and character classes. Used by `extract_literal_prefix` to
+/// drive longest-common-prefix extraction across alternation branches.
+fn split_top_level_alternatives(body: &[u8]) -> Vec<&[u8]> {
+    let mut out = Vec::new();
+    let mut last = 0usize;
+    let mut i = 0usize;
+    let mut depth = 0usize;
+    while i < body.len() {
+        let c = body[i];
+        if c == b'\\' {
+            i += 2;
+            continue;
+        }
+        if c == b'[' {
+            i += 1;
+            while i < body.len() && body[i] != b']' {
+                if body[i] == b'\\' {
+                    i += 2;
+                } else {
+                    i += 1;
+                }
+            }
+            i += 1;
+            continue;
+        }
+        if c == b'(' {
+            depth += 1;
+        } else if c == b')' {
+            depth = depth.saturating_sub(1);
+        } else if c == b'|' && depth == 0 {
+            out.push(&body[last..i]);
+            last = i + 1;
+        }
+        i += 1;
+    }
+    out.push(&body[last..]);
+    out
+}
+
+/// Longest common prefix across a non-empty slice of strings, byte-wise.
+fn longest_common_prefix(items: &[String]) -> String {
+    if items.is_empty() {
+        return String::new();
+    }
+    let first = items[0].as_bytes();
+    let mut end = first.len();
+    for other in &items[1..] {
+        let ob = other.as_bytes();
+        let mut k = 0;
+        while k < end && k < ob.len() && first[k] == ob[k] {
+            k += 1;
+        }
+        end = k;
+        if end == 0 {
+            break;
+        }
+    }
+    String::from_utf8_lossy(&first[..end]).into_owned()
 }
 
 /// infer confidence for a gitleaks rule based on regex structure
@@ -1875,10 +1953,17 @@ mod tests {
                 // capturing, no alternation — enter and extract
                 (r"\b(hf_)[A-Za-z0-9]+\b", Some("hf_")),
                 (r"\b(AKIA[0-9A-Z]{16})\b", Some("AKIA")),
-                // alternation kills the prefix
-                (r"\b(sk_test_|rk_test_)[A-Za-z0-9]+\b", None),
-                (r"\b(?:sk_|rk_)[A-Za-z0-9]+\b", None),
+                // alternation with no common head — None
                 (r"\b(?:foo|bar)[A-Za-z0-9]+\b", None),
+                // alternation with common literal head — LCP
+                (r"\b(sk_test_|sk_live_)[A-Za-z0-9]+\b", Some("sk_")),
+                (r"\b(?:sk_test_|sk_live_|sk_prod_)[A-Za-z0-9]+\b", Some("sk_")),
+                (r"\b(sk_test_|rk_test_)[A-Za-z0-9]+\b", None),
+                (r"\b(?:hf_read_|hf_write_)[A-Za-z0-9]+\b", Some("hf_")),
+                // 1-char LCP is rejected (same threshold as direct extraction)
+                (r"\b(?:AKIA|ASIA|AROA)[0-9A-Z]{16}\b", None),
+                // three-way with a longer common head
+                (r"\b(?:ghp_|gho_|ghu_|ghs_|ghr_)[A-Za-z0-9]{36}\b", Some("gh")),
                 // nested groups, no alternation
                 (r"\b((hf_))[A-Za-z0-9]+\b", Some("hf_")),
                 // alternation at depth 2 still kills the surrounding group
