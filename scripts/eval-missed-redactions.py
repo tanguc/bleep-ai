@@ -173,6 +173,12 @@ def scan(body: bytes, rules: list[dict], use_keywords: bool) -> list[dict]:
                 continue
             if rule["checksum"] == "luhn" and not luhn_valid(chunk):
                 continue
+            if is_bleep_fake(rule["id"], chunk):
+                # bleep's realistic mimicry produces values that match the same
+                # rule again (an `hf_…` fake matches the HF rule, a fake email
+                # matches the email rule). Reporting these would drown out real
+                # misses, so we skip anything that looks like our own output.
+                continue
 
             raw_matches.append(
                 {
@@ -197,6 +203,43 @@ def scan(body: bytes, rules: list[dict], use_keywords: bool) -> list[dict]:
         resolved.append(m)
 
     return resolved
+
+
+# ── known-fake patterns ──────────────────────────────────────────────────────
+# bleep's realistic mimicry produces values that match the same rules that
+# detected the original. Without filtering, the eval double-counts them as
+# misses. We recognize each replacer's deterministic signature here.
+#
+# Sources of truth: src/replacement/replacers.rs (the *_realistic functions).
+
+import re as _stdlib_re  # always available, doesn't depend on the optional 'regex' pkg
+
+_FAKE_EMAIL_DOMAINS = _stdlib_re.compile(rb"@example\.(com|org|net)\b")
+# fake_phone_visible / fake_phone_realistic both pick from a small set; visible
+# format is "+1-555-010-NNNN", realistic preserves the input format with random
+# digits — hard to fingerprint cheaply, so phone is left to the per-rule logic.
+_FAKE_IPV4_TESTNET = _stdlib_re.compile(rb"^(198\.51\.100\.\d{1,3}|203\.0\.113\.\d{1,3}|192\.0\.2\.\d{1,3})$")
+_FAKE_SSN_VISIBLE = _stdlib_re.compile(rb"^000-(00|99)-\d{4}$")
+_FAKE_JWT_HEADER = b"eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0"  # fake_jwt_realistic header
+
+
+def is_bleep_fake(rule_id: str, chunk: bytes) -> bool:
+    """Return True if `chunk` looks like a value the realistic mimicry replacer
+    would have produced — so we should NOT flag it as a missed redaction."""
+    # email rules — all fakes land on @example.{com,org,net}
+    if "email" in rule_id:
+        return bool(_FAKE_EMAIL_DOMAINS.search(chunk))
+    # ipv4 rules — fakes use IANA TEST-NET ranges
+    if "ipv4" in rule_id or rule_id.endswith(".ip"):
+        return bool(_FAKE_IPV4_TESTNET.search(chunk))
+    # ssn — visible marker uses 000-XX form
+    if "ssn" in rule_id:
+        return bool(_FAKE_SSN_VISIBLE.search(chunk))
+    # jwt — fake header is a fixed value
+    if "jwt" in rule_id or rule_id.endswith(".jwt"):
+        return _FAKE_JWT_HEADER in chunk
+    return False
+
 
 # ── multi-line JSON entry iterator ───────────────────────────────────────────
 

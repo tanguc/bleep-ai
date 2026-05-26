@@ -16,3 +16,4 @@ claude-wrapper.sh~
 
 # project-local Claude config (machine-specific)
 .claude/
+.eval-venv/

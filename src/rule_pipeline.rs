@@ -1528,6 +1528,22 @@ pub fn run(opts: &RunOptions) -> RunResult {
     final_rules.sort_by(|a, b| a.id.cmp(&b.id));
     log_progress!(quiet, "rule_pipeline: {} rules after merge+dedup", final_rules.len());
 
+    // ensure every PII-email rule has at least one trigger keyword, so the
+    // AhoCorasick combined pre-filter doesn't reject bodies whose only PII
+    // is email addresses (e.g. MCP server registry payloads — `mailto:…`).
+    // Without this, a body that contains nothing-but-emails skips the per-rule
+    // regex scan and emails go through un-redacted.
+    let mut email_kw_injected = 0usize;
+    for rule in final_rules.iter_mut() {
+        if rule.subcategory == "email" && !rule.keywords.iter().any(|k| k == "@") {
+            rule.keywords.push("@".to_string());
+            email_kw_injected += 1;
+        }
+    }
+    if email_kw_injected > 0 {
+        log_progress!(quiet, "rule_pipeline: injected '@' keyword into {} email rule(s)", email_kw_injected);
+    }
+
     // populate literal_prefix from regex (skips rules where the prefix YAML field
     // is already set — lets custom rules override the auto-extracted value).
     let mut prefix_count = 0usize;
