@@ -14,6 +14,7 @@ set -euo pipefail
 #   --repo=OWNER/NAME    override GitHub repo (default: tanguc/bleep-ai)
 #   --launch-agent       install LaunchAgent non-interactively (yes)
 #   --no-launch-agent    skip LaunchAgent (no)
+#   --no-resign-agent    skip the claude re-sign LaunchAgent
 #   -h, --help           print this help and exit 0
 # ============================================================
 
@@ -32,8 +33,10 @@ PREFIX="${DEFAULT_PREFIX}"
 VERSION_OVERRIDE=""
 REPO_OWNER="${REPO_OWNER_DEFAULT}"
 REPO_NAME="${REPO_NAME_DEFAULT}"
-LAUNCH_AGENT_CHOICE="ask"   # ask | yes | no
+LAUNCH_AGENT_CHOICE="yes"   # yes | no — LaunchAgent installed by default
+RESIGN_AGENT_CHOICE="yes"   # yes | no — claude re-sign agent installed by default
 OVERRIDE_CLAUDE=1           # 1=install claude shim | 0=skip
+START_APP=1                 # 1=launch Bleep menu-bar app after install | 0=skip
 DO_UNINSTALL=0
 DO_LOCAL=0
 
@@ -55,15 +58,19 @@ Options:
   --prefix=PATH        install root (default: ~/.local)
   --version=TAG        pin a specific release tag
   --repo=OWNER/NAME    override the GitHub repo (default: tanguc/bleep-ai)
-  --launch-agent       install LaunchAgent for gateway auto-start on login
+  --launch-agent       install LaunchAgent for gateway auto-start on login (default)
   --no-launch-agent    skip LaunchAgent installation
+  --no-resign-agent    skip the claude re-sign LaunchAgent (agent is on by default)
   --no-override-claude skip installing the claude shim (override is on by default)
+  --no-start-app       do not launch the Bleep menu-bar app after install
   -h, --help           show this help
 
 Environment:
   BLEEP_LAUNCH_AGENT=1   same as --launch-agent
   BLEEP_LAUNCH_AGENT=0   same as --no-launch-agent
+  BLEEP_RESIGN_AGENT=0   same as --no-resign-agent
   BLEEP_OVERRIDE_CLAUDE=0  same as --no-override-claude
+  BLEEP_START_APP=0        same as --no-start-app
 EOF
   exit 0
 }
@@ -81,7 +88,11 @@ for arg in "$@"; do
     --repo=*)            raw="${arg#--repo=}"; REPO_OWNER="${raw%%/*}"; REPO_NAME="${raw#*/}" ;;
     --launch-agent)      LAUNCH_AGENT_CHOICE="yes" ;;
     --no-launch-agent)   LAUNCH_AGENT_CHOICE="no" ;;
+    --resign-agent)      RESIGN_AGENT_CHOICE="yes" ;;
+    --no-resign-agent)   RESIGN_AGENT_CHOICE="no" ;;
     --no-override-claude) OVERRIDE_CLAUDE=0 ;;
+    --start-app)         START_APP=1 ;;
+    --no-start-app)      START_APP=0 ;;
     -h|--help)           usage ;;
     *) die "unknown option: $arg  (try --help)" ;;
   esac
@@ -90,7 +101,10 @@ done
 # env-var overrides for non-interactive automation
 if [ "${BLEEP_LAUNCH_AGENT:-}" = "1" ]; then LAUNCH_AGENT_CHOICE="yes"; fi
 if [ "${BLEEP_LAUNCH_AGENT:-}" = "0" ]; then LAUNCH_AGENT_CHOICE="no"; fi
+if [ "${BLEEP_RESIGN_AGENT:-}" = "1" ]; then RESIGN_AGENT_CHOICE="yes"; fi
+if [ "${BLEEP_RESIGN_AGENT:-}" = "0" ]; then RESIGN_AGENT_CHOICE="no"; fi
 if [ "${BLEEP_OVERRIDE_CLAUDE:-}" = "0" ]; then OVERRIDE_CLAUDE=0; fi
+if [ "${BLEEP_START_APP:-}" = "0" ]; then START_APP=0; fi
 
 # ============================================================
 # Platform guard
@@ -190,11 +204,37 @@ install_app_bundle() {
   printf '%s' "$app_dest"
 }
 
+# Write a LaunchAgent plist and (re)load it — but only re-bootstrap when the
+# content actually changed or the agent isn't loaded yet. Re-bootstrapping an
+# unchanged, already-running agent makes macOS re-fire the "Background Items
+# Added" notification on every install, so we skip it when nothing changed.
+reload_agent() {
+  local label="$1" plist="$2" content="$3"
+  local uid; uid="$(id -u)"
+  local loaded=0 unchanged=0
+  launchctl print "gui/${uid}/${label}" >/dev/null 2>&1 && loaded=1
+  if [ -f "$plist" ] && [ "$(cat "$plist" 2>/dev/null)" = "$content" ]; then
+    unchanged=1
+  fi
+  if [ "$loaded" = 1 ] && [ "$unchanged" = 1 ]; then
+    log "${label}: already loaded and unchanged — left as-is"
+    return 0
+  fi
+  printf '%s\n' "$content" > "$plist"
+  launchctl bootout "gui/${uid}" "$plist" 2>/dev/null || true
+  if launchctl bootstrap "gui/${uid}" "$plist"; then
+    log "${label}: loaded"
+  else
+    log "warning: ${label} bootstrap failed — plist at $plist (load manually)"
+  fi
+}
+
 install_launch_agent() {
   local plist="${HOME}/Library/LaunchAgents/${LAUNCH_AGENT_PLIST_NAME}"
   local gw="${PREFIX}/bin/bleep-gateway"
   mkdir -p "${HOME}/Library/LaunchAgents"
-  cat > "$plist" <<PLIST
+  local content
+  content="$(cat <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -206,18 +246,21 @@ install_launch_agent() {
   </array>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><false/>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <!-- request logging for the eval pipeline: gateway appends every -->
+    <!-- request to \${BLEEP_LOG_PATH}/bleep-requests.jsonl. canonical -->
+    <!-- path is /tmp/bleep-requests.jsonl — see scripts/eval-classify.py -->
+    <key>BLEEP_LOG_REQUESTS</key><string>1</string>
+    <key>BLEEP_LOG_PATH</key><string>/tmp</string>
+  </dict>
   <key>StandardOutPath</key><string>/tmp/bleep-gateway.out.log</string>
   <key>StandardErrorPath</key><string>/tmp/bleep-gateway.err.log</string>
 </dict>
 </plist>
 PLIST
-  # unload if already loaded (idempotent)
-  launchctl bootout "gui/$(id -u)" "$plist" 2>/dev/null || true
-  if launchctl bootstrap "gui/$(id -u)" "$plist"; then
-    log "LaunchAgent installed and started: ${LAUNCH_AGENT_LABEL}"
-  else
-    log "warning: launchctl bootstrap failed — plist is at $plist (you can load manually)"
-  fi
+)"
+  reload_agent "$LAUNCH_AGENT_LABEL" "$plist" "$content"
 }
 
 install_claude_override() {
@@ -310,6 +353,39 @@ resign_one() {
   fi
 }
 
+# Restore the bleep claude shim if claude's native auto-updater clobbered it.
+# A claude self-update repoints ~/.local/bin/claude straight at the new version
+# binary, silently bypassing the wrapper (no MITM, no redaction). We own that
+# PATH entry: if it no longer points at the wrapper, capture the real binary it
+# now points to (that IS the freshly-installed claude) into .claude-path, then
+# repoint the shim back at the wrapper.
+reconcile_shim() {
+  local shim="$HOME/.local/bin/claude"
+  local wrapper="$LIB_DIR/bleep-wrapper.sh"
+  if [ ! -e "$wrapper" ]; then
+    log "shim: wrapper missing at $wrapper - cannot reconcile"
+    return 0
+  fi
+  local target
+  target="$(readlink "$shim" 2>/dev/null || true)"
+  if [ "$target" = "$wrapper" ]; then
+    log "shim: ok (claude -> wrapper)"
+    return 0
+  fi
+  log "shim: claude is NOT wrapped (claude -> ${target:-<not a symlink>})"
+  if [ -n "$target" ] && [ -x "$target" ] && [ "$target" != "$wrapper" ]; then
+    printf '%s' "$target" > "$LIB_DIR/.claude-path" \
+      && log "shim: captured real claude path -> $target"
+  fi
+  if ln -sf "$wrapper" "$shim"; then
+    log "shim: restored claude -> wrapper"
+  else
+    log "shim: ERROR failed to restore symlink at $shim"
+  fi
+}
+
+reconcile_shim
+
 # claude — sign every version present (cheap, also covers rollback). Derive
 # the versions dir from the stored path written by the wrapper/installer.
 stored="$(cat "$LIB_DIR/.claude-path" 2>/dev/null || true)"
@@ -349,7 +425,8 @@ WATCHHDR
 
   local plist="${HOME}/Library/LaunchAgents/${RESIGN_AGENT_PLIST_NAME}"
   mkdir -p "${HOME}/Library/LaunchAgents"
-  {
+  local content
+  content="$( {
     cat <<PLIST_HEAD
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -363,25 +440,22 @@ WATCHHDR
   <key>WatchPaths</key>
   <array>
     <string>${watch_file}</string>
+    <string>${HOME}/.local/bin</string>
 PLIST_HEAD
     # watch the versions/ directory — fires when a new version appears
     [ -d "$versions_dir" ] && printf '    <string>%s</string>\n' "$versions_dir"
     cat <<PLIST_TAIL
   </array>
+  <key>StartInterval</key><integer>60</integer>
   <key>RunAtLoad</key><true/>
   <key>StandardOutPath</key><string>/tmp/bleep-resign.log</string>
   <key>StandardErrorPath</key><string>/tmp/bleep-resign.log</string>
 </dict>
 </plist>
 PLIST_TAIL
-  } > "$plist"
+  } )"
 
-  launchctl bootout "gui/$(id -u)" "$plist" 2>/dev/null || true
-  if launchctl bootstrap "gui/$(id -u)" "$plist"; then
-    log "resign agent installed: ${RESIGN_AGENT_LABEL} (watches ${versions_dir})"
-  else
-    log "warning: resign agent bootstrap failed — plist at $plist (load manually)"
-  fi
+  reload_agent "$RESIGN_AGENT_LABEL" "$plist" "$content"
 }
 
 uninstall() {
@@ -425,6 +499,24 @@ uninstall() {
 
   # 5. intentionally preserve user data: ~/Library/Application Support/bleep
   log "uninstall complete (user data in ~/Library/Application Support/bleep preserved)"
+}
+
+# Launch the Bleep menu-bar app. Skipped with --no-start-app / BLEEP_START_APP=0.
+start_app() {
+  local app_path="$1"
+  if [ "$START_APP" != "1" ]; then
+    log "skipping app launch (--no-start-app)"
+    return
+  fi
+  if [ ! -d "$app_path" ]; then
+    log "app bundle not found at ${app_path} — not launching"
+    return
+  fi
+  if open "$app_path" 2>/dev/null; then
+    log "launched Bleep menu-bar app"
+  else
+    log "warning: could not launch app — open it manually: ${app_path}"
+  fi
 }
 
 print_summary() {
@@ -537,24 +629,14 @@ main() {
     APP_PATH=$(install_app_bundle_local)
     if [ "$OVERRIDE_CLAUDE" = "1" ]; then
       install_claude_override
-      install_resign_agent
+      if [ "$RESIGN_AGENT_CHOICE" = "yes" ]; then install_resign_agent; else log "skipping resign agent (--no-resign-agent)"; fi
       CLAUDE_STATUS="${PREFIX}/bin/claude (shim)"
     fi
     case "$LAUNCH_AGENT_CHOICE" in
       yes) install_launch_agent; LA_STATUS="${HOME}/Library/LaunchAgents/${LAUNCH_AGENT_PLIST_NAME}" ;;
       no)  log "skipping LaunchAgent" ;;
-      ask)
-        if [ -t 0 ]; then
-          read -r -p "[bleep] install LaunchAgent for gateway auto-start on login? [y/N] " ans
-          case "$ans" in
-            [yY]|[yY][eE][sS]) install_launch_agent; LA_STATUS="${HOME}/Library/LaunchAgents/${LAUNCH_AGENT_PLIST_NAME}" ;;
-            *) log "skipping LaunchAgent" ;;
-          esac
-        else
-          log "non-interactive — skipping LaunchAgent"
-        fi
-        ;;
     esac
+    start_app "$APP_PATH"
     print_summary "$APP_PATH" "$LA_STATUS" "$CLAUDE_STATUS"
     return
   fi
@@ -591,11 +673,11 @@ main() {
   APP_PATH=$(install_app_bundle)
   if [ "$OVERRIDE_CLAUDE" = "1" ]; then
     install_claude_override
-    install_resign_agent
+    if [ "$RESIGN_AGENT_CHOICE" = "yes" ]; then install_resign_agent; else log "skipping resign agent (--no-resign-agent)"; fi
     CLAUDE_STATUS="${PREFIX}/bin/claude (shim)"
   fi
 
-  # LaunchAgent dispatch
+  # LaunchAgent dispatch — installed by default, opt out with --no-launch-agent
   case "$LAUNCH_AGENT_CHOICE" in
     yes)
       install_launch_agent
@@ -604,24 +686,9 @@ main() {
     no)
       log "skipping LaunchAgent (gateway will not auto-start on login)"
       ;;
-    ask)
-      if [ -t 0 ]; then
-        read -r -p "[bleep] install LaunchAgent for gateway auto-start on login? [y/N] " ans
-        case "$ans" in
-          [yY]|[yY][eE][sS])
-            install_launch_agent
-            LA_STATUS="${HOME}/Library/LaunchAgents/${LAUNCH_AGENT_PLIST_NAME}"
-            ;;
-          *)
-            log "skipping LaunchAgent"
-            ;;
-        esac
-      else
-        log "non-interactive (piped) — skipping LaunchAgent. Re-run with --launch-agent to install."
-      fi
-      ;;
   esac
 
+  start_app "$APP_PATH"
   print_summary "$APP_PATH" "$LA_STATUS" "$CLAUDE_STATUS"
 }
 
