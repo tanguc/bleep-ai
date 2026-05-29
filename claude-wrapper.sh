@@ -19,8 +19,94 @@ SCRIPT_DIR="$(cd -P "$(dirname "$_SOURCE")" && pwd)"
 # terminal (stderr); _wlog is log-file only for the chattier internal steps.
 _WLOG=/tmp/bleep-wrapper.log
 _wlog() { echo "$(date '+%Y-%m-%dT%H:%M:%S') [$$] $*" >>"$_WLOG" 2>/dev/null || true; }
-_say()  { echo "[bleep] $*" >&2; _wlog "$*"; }
+# colored tag on a tty; plain on pipes/logs so downstream tools stay happy
+if [ -t 2 ]; then
+    _BLEEP_TAG=$'\033[1;97;41m[bleep]\033[0m'
+    _BLEEP_DIM_ON=$'\033[2m'; _BLEEP_DIM_OFF=$'\033[0m'
+else
+    _BLEEP_TAG='[bleep]'; _BLEEP_DIM_ON=''; _BLEEP_DIM_OFF=''
+fi
+_say()  { printf '%s %s%s%s\n' "$_BLEEP_TAG" "$_BLEEP_DIM_ON" "$*" "$_BLEEP_DIM_OFF" >&2; _wlog "$*"; }
+# indented continuation line (no tag) — for multi-line banners
+_line() { printf '        %s%s%s\n' "$_BLEEP_DIM_ON" "$*" "$_BLEEP_DIM_OFF" >&2; _wlog "  $*"; }
+# fetch banner metrics with hard timeout — gateway-down fallback shows "—"
+_print_banner() {
+    local stats_port rules_count stats today week total db oldest_ts since_str
+    stats_port="$(cat /tmp/bleep-stats.port 2>/dev/null || echo 9290)"
+    # prefer the gateway endpoint (no filesystem dependency); fall back to
+    # scanning known on-disk locations if the endpoint is missing (older
+    # gateway) or the gateway is down.
+    rules_count="$(curl -sf --max-time 0.3 "http://127.0.0.1:${stats_port}/rules/count" 2>/dev/null \
+        | sed -n 's/.*"count":\([0-9]*\).*/\1/p')"
+    if [ -z "$rules_count" ] || [ "$rules_count" = "0" ]; then
+        local rules_file
+        for rules_file in \
+            "$SCRIPT_DIR/rules/combined.yaml" \
+            "$SCRIPT_DIR/../share/bleep/rules/combined.yaml" \
+            "$HOME/Projects/personal/llmlane-ai-poc-1/rules/combined.yaml" \
+            "$HOME/.bleep/rules/combined.yaml" \
+            ""; do
+            [ -f "$rules_file" ] && break
+        done
+        rules_count="$(grep -cE '^- id:|^  - id:' "$rules_file" 2>/dev/null || echo 0)"
+    fi
+    stats="$(curl -sf --max-time 0.3 "http://127.0.0.1:${stats_port}/stats" 2>/dev/null || true)"
+    today="$(printf '%s' "$stats" | sed -n 's/.*"today":\([0-9]*\).*/\1/p')"
+    week="$(printf '%s'  "$stats" | sed -n 's/.*"last_7d":\([0-9]*\).*/\1/p')"
+    total="$(printf '%s' "$stats" | sed -n 's/.*"total":\([0-9]*\).*/\1/p')"
+    [ "$rules_count" -gt 0 ] || rules_count="?"
+
+    # DB age: oldest ts. Falls back silently if sqlite3 or DB missing.
+    db="$HOME/.bleep/bleep-stats.db"
+    if command -v sqlite3 >/dev/null 2>&1 && [ -f "$db" ]; then
+        oldest_ts="$(sqlite3 "$db" 'SELECT MIN(ts) FROM redactions;' 2>/dev/null)"
+    fi
+    if [ -n "${oldest_ts:-}" ] && [ "$oldest_ts" != "" ]; then
+        local now_d oldest_d
+        now_d="$(date '+%Y-%m-%d')"
+        oldest_d="$(date -r "$oldest_ts" '+%Y-%m-%d' 2>/dev/null)"
+        if [ "$now_d" = "$oldest_d" ]; then
+            since_str="since $(date -r "$oldest_ts" '+%H:%M') today"
+        else
+            local days=$(( ( $(date +%s) - oldest_ts ) / 86400 ))
+            since_str="for ${days}d (since $(date -r "$oldest_ts" '+%b %-d'))"
+        fi
+    fi
+
+    _say "█████ engaged"
+    _line "hello, friend."
+    _line "proxy :9190 is listening. ${rules_count} rules are watching."
+    # collapse to one tracking line when buckets haven't diverged yet
+    if [ -n "${total:-}" ] && [ "${today:-}" = "${week:-}" ] && [ "${today:-}" = "${total:-}" ]; then
+        _line "tracking ${since_str:-since startup} · ${total} secrets stopped."
+    else
+        _line "24h: ${today:-—} secrets never left your machine."
+        _line "7d : ${week:-—}. and counting."
+    fi
+}
 _wlog "==== wrapper invoked: args=[$*] cwd=$(pwd)"
+
+# ── bypass mode ──────────────────────────────────────────────────────────────
+# Skip the proxy entirely — useful when bleep is misbehaving or for A/B testing
+# claude with vs without redaction. Triggered by either:
+#   BLEEP_BYPASS=1 claude ...
+#   claude --no-bleep ...   (flag is consumed; not forwarded to claude)
+_BLEEP_BYPASS="${BLEEP_BYPASS:-0}"
+_FILTERED_ARGS=()
+for _arg in "$@"; do
+    case "$_arg" in
+        --no-bleep|--bleep-bypass) _BLEEP_BYPASS=1 ;;
+        *) _FILTERED_ARGS+=("$_arg") ;;
+    esac
+done
+set -- "${_FILTERED_ARGS[@]+"${_FILTERED_ARGS[@]}"}"
+unset _FILTERED_ARGS _arg
+
+if [ "$_BLEEP_BYPASS" = "1" ]; then
+    _say "bypass mode — proxy disabled, traffic goes direct to anthropic"
+    # fall through to claude resolution; skip CA/proxy env + gateway autostart
+else
+
 # Trust bleep's CA across every TLS stack any claude subprocess might use:
 #   NODE_EXTRA_CA_CERTS — Node / undici / claude's own bundled HTTP client
 #   BUN_CA_BUNDLE_PATH  — Bun's native TLS path (claude is a bun-compiled binary)
@@ -45,7 +131,12 @@ export HTTPS_PROXY=http://localhost:9190
 # (which is how bun/node clients send them), so we still need this list.
 # export NO_PROXY="github.com,api.github.com,*.cloudflare.com,api.cloudflare.com,*.azure.com,*.microsoftonline.com,management.azure.com,login.microsoftonline.com,*.googleapis.com,generativelanguage.googleapis.com,*.miro.com,api.miro.com,proxy.golang.org,sum.golang.org,go.dev,*.1password.com,stone34.sergentanguc.com,localhost,127.0.0.1"
 
-export BLEEP_LOG_REQUESTS=1 # TODO remove once in prod
+# request logging for the eval pipeline. only consumed by a gateway THIS
+# wrapper spawns (see gateway auto-start below) — a child inherits this env.
+# the launchd-managed gateway gets the same vars from its plist instead
+# (install.sh / ai.bleep.gateway.plist). canonical output:
+# /tmp/bleep-requests.jsonl — kept in sync with src/request_logger.rs.
+export BLEEP_LOG_REQUESTS=1
 export BLEEP_LOG_PATH=/tmp
 export BLEEP_ACTIVE=1
 
@@ -136,7 +227,11 @@ else
 fi
 unset _GATEWAY_BIN _waited
 
-_say "active — proxying via localhost:9190"
+fi  # end bypass guard
+
+if [ "$_BLEEP_BYPASS" != "1" ]; then
+    _print_banner
+fi
 
 # ── forward signals to the child process ─────────────────────────────────────
 cleanup() {
@@ -202,18 +297,27 @@ if [ -n "$_CLAUDE_BIN" ] && [ "$(cat "$_CLAUDE_PATH_FILE" 2>/dev/null || true)" 
 fi
 # Ad-hoc re-sign before exec. claude's auto-updater ships unsigned binaries
 # and macOS AMFI SIGKILLs unsigned executables on Apple Silicon (this is the
-# `[1] killed claude` you get with no other output). No mtime cache — a
-# stale or silently-failed cache entry is exactly how an unsigned binary
-# slips through. We verify first and only sign when the signature is
-# missing/broken, so a properly-signed update keeps its real signature.
+# `[1] killed claude` you get with no other output). codesign -v on the
+# ~200MB binary costs 260–400ms per launch, so we cache the "valid" verdict
+# keyed on (path, inode, mtime, size). All four change atomically when the
+# auto-updater swaps the binary, so a cache hit means byte-identical to what
+# we last verified — no way for an unsigned binary to slip through.
 if command -v codesign >/dev/null 2>&1; then
-    if codesign -v "$_CLAUDE_BIN" >/dev/null 2>&1; then
-        _wlog "codesign: signature already valid — no re-sign needed"
+    _CS_CACHE=/tmp/bleep-codesign.cache
+    _CS_KEY="$(stat -f '%N|%i|%m|%z' "$_CLAUDE_BIN" 2>/dev/null || true)"
+    if [ -n "$_CS_KEY" ] && [ "$(cat "$_CS_CACHE" 2>/dev/null)" = "$_CS_KEY" ]; then
+        _wlog "codesign: cache hit — skipping verify ($_CS_KEY)"
+    elif codesign -v "$_CLAUDE_BIN" >/dev/null 2>&1; then
+        _wlog "codesign: signature valid — caching verdict"
+        [ -n "$_CS_KEY" ] && printf '%s' "$_CS_KEY" > "$_CS_CACHE" 2>/dev/null || true
     else
         _wlog "codesign: signature missing/broken — ad-hoc re-signing $_CLAUDE_BIN"
         _SIGN_ERR="$(codesign --force -s - "$_CLAUDE_BIN" 2>&1)" || true
         if codesign -v "$_CLAUDE_BIN" >/dev/null 2>&1; then
             _say "re-signed claude (auto-update left it unsigned)"
+            # re-stat: inode/mtime changed when codesign rewrote the binary
+            _CS_KEY="$(stat -f '%N|%i|%m|%z' "$_CLAUDE_BIN" 2>/dev/null || true)"
+            [ -n "$_CS_KEY" ] && printf '%s' "$_CS_KEY" > "$_CS_CACHE" 2>/dev/null || true
         else
             _say "error: codesign failed — claude would be killed by macOS"
             [ -n "${_SIGN_ERR:-}" ] && _say "  codesign: $_SIGN_ERR"
@@ -222,6 +326,7 @@ if command -v codesign >/dev/null 2>&1; then
         fi
         unset _SIGN_ERR
     fi
+    unset _CS_CACHE _CS_KEY
 fi
 # guard against resolving back to ourselves (would cause an infinite fork loop)
 _CLAUDE_BIN_REAL="$(cd -P "$(dirname "$_CLAUDE_BIN")" 2>/dev/null && pwd)/$(basename "$_CLAUDE_BIN")"

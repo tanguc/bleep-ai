@@ -61,10 +61,14 @@ jobs:
         with:
           tool: cocogitto
 
-      - name: Lint commits since last tag (fail fast on non-conventional)
-        # commit-msg + pre-push hooks should catch this locally, but if anyone
-        # used --no-verify we'd rather die here than mid-bump.
-        run: cog check --from-latest-tag
+      - name: Lint commits since last tag (warn only)
+        # The commit-msg hook (.githooks/commit-msg) is the real enforcement,
+        # run on every local commit. Here we only WARN: a single historical
+        # non-conventional commit must never deadlock releases — and it would,
+        # because the gate blocks the very release whose tag would move the
+        # check range past the bad commit. cog bump ignores non-conventional
+        # commits for version calculation anyway.
+        run: cog check --from-latest-tag || echo "::warning::non-conventional commit(s) since last tag — see log above; release continues"
 
       - name: Decide whether to release
         id: decide

@@ -2,16 +2,32 @@
 
 :root {
   --bg: #0e0f12;
+  /* elevation ramp — 0 (bg) is darkest, 3 is the highest surface. Every
+     level is a real token; nothing falls through to a hardcoded literal. */
   --bg-elev: #161820;
+  --bg-elev1: #191c25;
   --bg-elev2: #1d2029;
+  --bg-elev3: #262a37;
   --border: #262936;
   --fg: #e6e8ee;
   --fg-dim: #8a90a0;
-  --accent: #4f9cff;
+  /* accent leans teal — a privacy/redaction tool shouldn't wear generic
+     AI-blue. Distinct in hue from --green so "safe/connected" stays its own
+     signal. */
+  --accent: #2fd4b3;
   --green: #43d77a;
   --red: #ff5d6c;
   --orange: #ff9d4a;
   --purple: #a587ff;
+
+  /* category identity — single source of truth. Bars, pills, and chips all
+     derive their fills and text from these via color-mix(); a category is
+     the same colour everywhere it appears. */
+  --cat-secret: #ff5d6c;
+  --cat-pii:    #a587ff;
+  --cat-infra:  #ff9d4a;
+  --cat-other:  #4f9cff;
+
   --sidebar-w: 200px;
 }
 
@@ -55,12 +71,20 @@ body {
 }
 
 .brand {
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--fg-dim);
-  padding: 6px 10px 14px;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--fg);
+  padding: 4px 10px 16px;
+}
+/* the wordmark redacts itself — "ee" sits under a redaction bar. The
+   product's whole job, stated as the brand's one characterful detail. */
+.brand .redact {
+  background: var(--green);
+  color: transparent;
+  border-radius: 3px;
+  padding: 0 3px;
+  margin: 0 1px;
 }
 
 .sidebar nav {
@@ -181,6 +205,26 @@ h2 {
 
 .card-total .card-value { color: var(--accent); }
 
+/* hero metric — "today" is the number the app exists to show. It gets an
+   accent top-rule, a faint accent wash, and a larger value so the eye
+   lands there first instead of treating all four cards as equals. */
+.card-hero {
+  position: relative;
+  border-color: color-mix(in srgb, var(--accent) 32%, var(--border));
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--accent) 6%, var(--bg-elev)), var(--bg-elev));
+}
+.card-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 2px;
+  background: var(--accent);
+  border-radius: 10px 10px 0 0;
+}
+.card-hero .card-label { color: color-mix(in srgb, var(--accent) 55%, var(--fg-dim)); }
+.card-hero .card-value { font-size: 38px; color: var(--accent); }
+
 /* ── panels & charts ──────────────────────────────────────────────────── */
 
 .grid {
@@ -224,17 +268,17 @@ h2 {
 .bar-label { font-size: 12px; color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bar-count { font-size: 12px; color: var(--fg-dim); }
 
-.bar.cat-secret { --bar-fill: rgba(255,93,108,0.25); }
-.bar.cat-pii    { --bar-fill: rgba(165,135,255,0.25); }
-.bar.cat-infra  { --bar-fill: rgba(255,157,74,0.25); }
-.bar.cat-other  { --bar-fill: rgba(79,156,255,0.25); }
+.bar.cat-secret { --bar-fill: color-mix(in srgb, var(--cat-secret) 25%, transparent); }
+.bar.cat-pii    { --bar-fill: color-mix(in srgb, var(--cat-pii) 25%, transparent); }
+.bar.cat-infra  { --bar-fill: color-mix(in srgb, var(--cat-infra) 25%, transparent); }
+.bar.cat-other  { --bar-fill: color-mix(in srgb, var(--cat-other) 25%, transparent); }
 
 .bar-clickable { cursor: pointer; transition: filter 100ms ease-out; }
 .bar-clickable:hover { filter: brightness(1.35); }
 
 /* ── drilldown table ─────────────────────────────────────────────────── */
 #dd-wrap { max-height: 72vh; overflow-y: auto; }
-#dd-wrap .redacted-table th { position: sticky; top: 0; background: var(--bg-elev1, #1c1c1c); z-index: 1; }
+#dd-wrap .redacted-table th { position: sticky; top: 0; background: var(--bg-elev1); z-index: 1; }
 .redacted-table .td-time { color: var(--fg-dim); white-space: nowrap; }
 #dd-back { cursor: pointer; }
 
@@ -273,7 +317,7 @@ h2 {
 .dd-filterrow th {
   position: sticky;
   top: 28px;
-  background: var(--bg-elev1, #1c1c1c);
+  background: var(--bg-elev1);
   z-index: 1;
   padding: 4px 6px;
 }
@@ -283,16 +327,16 @@ h2 {
   background: rgba(255,255,255,0.04);
   border: 1px solid rgba(255,255,255,0.08);
   border-radius: 4px;
-  color: var(--fg, #eaeaea);
+  color: var(--fg);
   font-size: 11px;
   padding: 3px 6px;
   outline: none;
 }
 .dd-colfilter:focus {
-  border-color: rgba(79,156,255,0.6);
+  border-color: var(--accent);
   background: rgba(255,255,255,0.06);
 }
-.dd-colfilter::placeholder { color: var(--fg-dim, #8a8a8a); }
+.dd-colfilter::placeholder { color: var(--fg-dim); }
 
 .empty {
   text-align: center;
@@ -317,7 +361,7 @@ h2 {
   flex: 0 1 240px;
   width: 240px;
   max-width: 320px;
-  background: var(--bg-elev1, #1c1c1c);
+  background: var(--bg-elev1);
   border: 1px solid var(--bg-elev2);
   border-radius: 6px;
   padding: 6px 10px;
@@ -337,7 +381,7 @@ h2 {
   flex-wrap: wrap;
 }
 .tail-chips .chip {
-  background: var(--bg-elev1, #1c1c1c);
+  background: var(--bg-elev1);
   border: 1px solid var(--bg-elev2);
   color: var(--fg-dim);
   font-size: 11px;
@@ -351,11 +395,11 @@ h2 {
 .tail-chips .chip.active {
   color: var(--fg);
   border-color: var(--accent);
-  background: rgba(79, 156, 255, 0.12);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
 }
-.tail-chips .chip.cat-pii.active    { border-color: #79b3ff; background: rgba(79, 156, 255, 0.18); color: #79b3ff; }
-.tail-chips .chip.cat-secret.active { border-color: #ff8a8a; background: rgba(255, 107, 107, 0.18); color: #ff8a8a; }
-.tail-chips .chip.cat-infra.active  { border-color: #ffc97a; background: rgba(255, 184, 77, 0.18); color: #ffc97a; }
+.tail-chips .chip.cat-pii.active    { border-color: var(--cat-pii);    background: color-mix(in srgb, var(--cat-pii) 18%, transparent);    color: color-mix(in srgb, var(--cat-pii) 72%, #fff); }
+.tail-chips .chip.cat-secret.active { border-color: var(--cat-secret); background: color-mix(in srgb, var(--cat-secret) 18%, transparent); color: color-mix(in srgb, var(--cat-secret) 70%, #fff); }
+.tail-chips .chip.cat-infra.active  { border-color: var(--cat-infra);  background: color-mix(in srgb, var(--cat-infra) 18%, transparent);  color: color-mix(in srgb, var(--cat-infra) 70%, #fff); }
 
 .tail-match-count {
   font-size: 11px;
@@ -392,7 +436,7 @@ h2 {
 }
 
 .tail-row.expandable { cursor: pointer; }
-.tail-row.expandable:hover { background: var(--bg-elev3, #2a2a2a); }
+.tail-row.expandable:hover { background: var(--bg-elev3); }
 .tail-row.open { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
 
 .tail-caret {
@@ -404,7 +448,7 @@ h2 {
 }
 
 .tail-details {
-  background: var(--bg-elev1, #1c1c1c);
+  background: var(--bg-elev1);
   border: 1px solid var(--bg-elev2);
   border-top: none;
   border-bottom-left-radius: 6px;
@@ -444,7 +488,7 @@ h2 {
   transition: background 120ms ease-out, color 120ms ease-out;
 }
 .redacted-table .copyable:hover {
-  background: var(--bg-elev3, #2a2a2a);
+  background: var(--bg-elev3);
 }
 .redacted-table .copyable.copied {
   background: rgba(120, 200, 120, 0.25);
@@ -489,15 +533,15 @@ h2 {
   background: var(--bg-elev2);
   color: var(--fg-dim);
 }
-.pill.cat-secret { background: rgba(255, 107, 107, 0.18); color: #ff8a8a; }
-.pill.cat-pii    { background: rgba(79, 156, 255, 0.18); color: #79b3ff; }
-.pill.cat-infra  { background: rgba(255, 184, 77, 0.18); color: #ffc97a; }
-.pill.sev-high   { background: rgba(255, 79, 79, 0.20); color: #ff8a8a; }
-.pill.sev-med    { background: rgba(255, 184, 77, 0.18); color: #ffc97a; }
-.pill.sev-low    { background: rgba(120, 200, 120, 0.18); color: #94d894; }
+.pill.cat-secret { background: color-mix(in srgb, var(--cat-secret) 18%, transparent); color: color-mix(in srgb, var(--cat-secret) 70%, #fff); }
+.pill.cat-pii    { background: color-mix(in srgb, var(--cat-pii) 18%, transparent);    color: color-mix(in srgb, var(--cat-pii) 72%, #fff); }
+.pill.cat-infra  { background: color-mix(in srgb, var(--cat-infra) 18%, transparent);  color: color-mix(in srgb, var(--cat-infra) 70%, #fff); }
+.pill.sev-high   { background: color-mix(in srgb, var(--red) 20%, transparent);    color: color-mix(in srgb, var(--red) 70%, #fff); }
+.pill.sev-med    { background: color-mix(in srgb, var(--orange) 18%, transparent); color: color-mix(in srgb, var(--orange) 70%, #fff); }
+.pill.sev-low    { background: color-mix(in srgb, var(--green) 18%, transparent);  color: color-mix(in srgb, var(--green) 72%, #fff); }
 
 @keyframes flash {
-  from { background-color: rgba(79,156,255,0.18); }
+  from { background-color: color-mix(in srgb, var(--accent) 22%, transparent); }
   to   { background-color: var(--bg-elev2); }
 }
 
@@ -505,6 +549,28 @@ h2 {
 .tail-method { color: var(--accent); font-weight: 600; }
 .tail-uri { color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tail-redactions { color: var(--orange); }
+
+/* ── entrance ─────────────────────────────────────────────────────────── */
+/* On a route change the content is rebuilt; stagger the header and panels
+   in on a short delay ladder so the view assembles instead of snapping.
+   Only fires on real navigation — same-route poll refreshes swap inner
+   nodes, not these direct children. */
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.content > * {
+  animation: rise 300ms cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
+}
+.content > *:nth-child(1) { animation-delay: 0ms; }
+.content > *:nth-child(2) { animation-delay: 45ms; }
+.content > *:nth-child(3) { animation-delay: 90ms; }
+.content > *:nth-child(4) { animation-delay: 135ms; }
+
+@media (prefers-reduced-motion: reduce) {
+  .content > * { animation: none; }
+}
 
 /* ── settings kv table ────────────────────────────────────────────────── */
 
@@ -525,16 +591,82 @@ h2 {
 
 /* ── perf table ──────────────────────────────────────────────────────── */
 
-.settings-actions { display: flex; gap: 8px; flex-wrap: wrap; }
-.settings-hint { margin-bottom: 10px; }
-.settings-status { margin-top: 10px; min-height: 1em; }
+/* ── buttons ─────────────────────────────────────────────────────────── */
+
+.btn {
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-elev2);
+  color: var(--fg);
+  cursor: pointer;
+  transition: background 120ms ease-out, border-color 120ms ease-out, color 120ms ease-out;
+}
+.btn:hover:not(:disabled) { background: var(--bg-elev3); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* destructive — red-tinted, escalates visibly on the arm/confirm step */
+.btn-danger {
+  border-color: color-mix(in srgb, var(--red) 38%, var(--border));
+  background: color-mix(in srgb, var(--red) 8%, var(--bg-elev2));
+  color: color-mix(in srgb, var(--red) 78%, #fff);
+}
+.btn-danger:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--red) 58%, var(--border));
+  background: color-mix(in srgb, var(--red) 16%, var(--bg-elev2));
+}
+.btn-danger.armed {
+  border-color: var(--red);
+  background: color-mix(in srgb, var(--red) 26%, var(--bg-elev2));
+  color: #fff;
+}
+
+/* ── chip (small pill button — drilldown back, perf controls) ────────── */
+
+.chip {
+  font: inherit;
+  font-size: 11px;
+  line-height: 1;
+  padding: 6px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-elev2);
+  color: var(--fg-dim);
+  cursor: pointer;
+  transition: background 120ms ease-out, border-color 120ms ease-out, color 120ms ease-out;
+}
+.chip:hover:not(:disabled) { background: var(--bg-elev3); color: var(--fg); }
+.chip:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ── settings ────────────────────────────────────────────────────────── */
+
+.settings-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+
+/* destructive-zone callout — red-tinted so the buttons below read as a
+   deliberate danger area, not stray controls. */
+.settings-note {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 9px 12px;
+  margin-bottom: 14px;
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--fg-dim);
+  background: color-mix(in srgb, var(--red) 7%, var(--bg-elev2));
+  border: 1px solid color-mix(in srgb, var(--red) 18%, var(--border));
+}
+.settings-note-icon { color: var(--red); flex: none; }
+
+.settings-status { margin-top: 12px; min-height: 1em; }
 .settings-status.ok { color: var(--green); }
 .settings-status.err { color: var(--red); }
-.chip.danger { border-color: rgba(255, 93, 108, 0.45); color: var(--red); cursor: pointer; }
-.chip.danger:hover:not(:disabled) { background: rgba(255, 93, 108, 0.12); }
-.chip.danger:disabled { opacity: 0.5; cursor: not-allowed; }
+
 .perf-actions { display: flex; gap: 8px; align-items: center; }
-.perf-toggle { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.perf-toggle { display: inline-flex; align-items: center; gap: 6px; }
 .perf-toggle input { margin: 0; }
 
 .perf-table { table-layout: fixed; width: 100%; font-size: 12px; }
@@ -557,7 +689,7 @@ h2 {
 .perf-table tr.perf-row.expanded { background: var(--bg-elev2); }
 
 .perf-bar {
-  background: var(--bg-elev1, #1c1c1c);
+  background: var(--bg-elev1);
   border: 1px solid var(--border);
   height: 8px;
   border-radius: 4px;
@@ -568,7 +700,7 @@ h2 {
   background: linear-gradient(90deg, var(--accent), #5cd0ff);
 }
 
-.perf-detail td { background: var(--bg-elev1, #1c1c1c); padding: 10px 12px; }
+.perf-detail td { background: var(--bg-elev1); padding: 10px 12px; }
 .perf-detail-grid {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
