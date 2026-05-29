@@ -7705,14 +7705,14 @@ rules:
   subcategory: email
   source: secrets-patterns-db
   confidence: high
-  regex: ([a-z0-9!#$%&'*+\/=?^_`{|.}~-]+@(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)*(?:[a-z0-9-]{1,6}|[a-z0-9-]{8,}|[a-z0-9-]*[0-9][a-z0-9-]*|[a-df-z][a-z0-9-]{6}|e[a-wyz0-9][a-z0-9-]{5}|ex[b-z0-9][a-z0-9-]{4}|exa[a-ln-z0-9][a-z0-9-]{3}|exam[a-oq-z0-9][a-z0-9-]{2}|examp[a-km-z0-9][a-z0-9-]|exampl[a-df-z0-9])\.(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?))
+  regex: ([a-z][a-z0-9!#$%&*+\/=?^_.~-]*@(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)*(?:[a-z0-9-]{1,6}|[a-z0-9-]{8,}|[a-z0-9-]*[0-9][a-z0-9-]*|[a-df-z][a-z0-9-]{6}|e[a-wyz0-9][a-z0-9-]{5}|ex[b-z0-9][a-z0-9-]{4}|exa[a-ln-z0-9][a-z0-9-]{3}|exam[a-oq-z0-9][a-z0-9-]{2}|examp[a-km-z0-9][a-z0-9-]|exampl[a-df-z0-9])\.(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?))
   keywords:
   - '@'
   entropy: null
   tags: []
   checksum_type: null
   replacement_type: faker_email
-  description: Email address excluding RFC 2606 reserved placeholder domains (example.com/net/org/invalid)
+  description: Email address — RFC 2606 reserved domains excluded; Teams IDs, git@ remotes, IP hosts, semver strings, and robot addresses also excluded
   severity: high
 - id: spdb.iban-numbers
   name: iban_numbers

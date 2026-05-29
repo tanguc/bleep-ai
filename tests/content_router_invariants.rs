@@ -270,6 +270,7 @@ fn test_inv08_passthrough_type_not_in_redactions() {
         description: String::new(),
         severity: "low".to_string(),
         literal_prefix: None,
+        exclude_regex: None,
     });
     let m = Match {
         rule,

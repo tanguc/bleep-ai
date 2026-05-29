@@ -96,7 +96,7 @@ fn e2e_prefix_preservation_full_corpus() {
     // index regexes by rule id for quick lookup against the validated runtime corpus
     let regex_by_id: std::collections::HashMap<&str, &Regex> = RULES
         .iter()
-        .map(|(r, re)| (r.id.as_str(), re))
+        .map(|(r, re, _excl)| (r.id.as_str(), re))
         .collect();
 
     for rule in NORMALIZED_RULES.iter() {

@@ -264,6 +264,7 @@ mod tests {
             description: String::new(),
             severity: "medium".to_string(),
             literal_prefix: None,
+            exclude_regex: None,
         });
         Match {
             rule,

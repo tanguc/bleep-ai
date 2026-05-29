@@ -46,7 +46,7 @@ fn scan_inner(body: &[u8]) -> Vec<Match> {
     let mut matches: Vec<Match> = Vec::new();
 
     // per-rule matching
-    for (rule_arc, regex) in RULES.iter() {
+    for (rule_arc, regex, exclude_re) in RULES.iter() {
         let t_rule = std::time::Instant::now();
         // inner keyword pre-filter (per-rule keywords)
         if !rule_arc.keywords.is_empty()
@@ -66,6 +66,13 @@ fn scan_inner(body: &[u8]) -> Vec<Match> {
 
         for m in regex.find_iter(body) {
             let raw = body[m.start()..m.end()].to_vec();
+
+            // exclude_regex filter — discard known false-positive patterns
+            if let Some(excl) = exclude_re {
+                if excl.is_match(&raw) {
+                    continue;
+                }
+            }
 
             // entropy filter
             if let Some(threshold) = rule_arc.entropy {
@@ -287,6 +294,7 @@ mod tests {
             description: String::new(),
             severity: "medium".to_string(),
             literal_prefix: None,
+            exclude_regex: None,
         }
     }
 

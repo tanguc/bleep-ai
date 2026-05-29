@@ -24,6 +24,7 @@ fn make_match(raw: &[u8], span: std::ops::Range<usize>, rt: ReplacementType) -> 
         description: String::new(),
         severity: "medium".to_string(),
         literal_prefix: None,
+        exclude_regex: None,
     });
     Match {
         rule,

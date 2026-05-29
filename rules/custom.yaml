@@ -628,26 +628,63 @@ rules:
   # to NOT match exactly "example"; additionally "test" and "localhost" as
   # bare single-label domains are already excluded by the multi-label domain
   # structure. Before→after: ~739 FPs eliminated.
+  #
+  # NOTE: each 7-char branch must exclude the SPECIFIC next character of
+  # "example" at that position. Earlier versions used [b-z0-9] at positions
+  # 4-6 which only excludes 'a' — so @example.com/.org/.net still matched.
+  # Per-position classes:
+  #   pos 2 (e_): not 'x' -> [a-wyz0-9]
+  #   pos 3 (ex_): not 'a' -> [b-z0-9]
+  #   pos 4 (exa_): not 'm' -> [a-ln-z0-9]
+  #   pos 5 (exam_): not 'p' -> [a-oq-z0-9]
+  #   pos 6 (examp_): not 'l' -> [a-km-z0-9]
+  #   pos 7 (exampl_): not 'e' -> [a-df-z0-9]
+  # fix(spdb.emails): additional FP exclusions on top of the RFC 2606 fix.
+  #
+  # regex changes vs upstream:
+  #   - local-part now requires [a-z] first char (removes digit/special-char-start
+  #     matches that capture ANSI escape residue like "91m'help@…" or Python bytes
+  #     prefix "b'real@…")
+  #   - removed ' ` | from local-part charset (virtually never in real addresses;
+  #     these chars allowed the prefix-pollution matches above)
+  #
+  # exclude_regex discards matches that survive the main regex but are still FPs:
+  #   @thread.v2        — Microsoft Teams thread IDs (hex@thread.v2)
+  #   @unq.gbl.spaces   — Teams/O365 space IDs (uuid_uuid@unq.gbl.spaces)
+  #   @<digits>.        — IP address domains (root@192.168.1.1) and semver-like
+  #                       package version strings (pnpm@9.15.4, corepack@0.31.0)
+  #   @v<digit>         — go-module / npm scoped version refs (pkg@v1.0.5)
+  #   ^git@             — git SSH remote URLs (git@github.com, git@ssh.dev.azure.com)
+  #   ^<robot-prefix>@  — transactional / system addresses that are not personal PII
   - id: spdb.emails
     name: emails
     category: pii
     subcategory: email
     source: secrets-patterns-db
     confidence: high
-    regex: '([a-z0-9!#$%&''*+\/=?^_`{|.}~-]+@(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)*(?:[a-z0-9-]{1,6}|[a-z0-9-]{8,}|[a-z0-9-]*[0-9][a-z0-9-]*|[a-df-z][a-z0-9-]{6}|e[a-wyz0-9][a-z0-9-]{5}|ex[b-z0-9][a-z0-9-]{4}|exa[b-z0-9][a-z0-9-]{3}|exam[b-z0-9][a-z0-9-]{2}|examp[b-z0-9][a-z0-9-]|exampl[a-df-z0-9])\.(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?))'
+    regex: '([a-z][a-z0-9!#$%&*+\/=?^_.~-]*@(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)*(?:[a-z0-9-]{1,6}|[a-z0-9-]{8,}|[a-z0-9-]*[0-9][a-z0-9-]*|[a-df-z][a-z0-9-]{6}|e[a-wyz0-9][a-z0-9-]{5}|ex[b-z0-9][a-z0-9-]{4}|exa[a-ln-z0-9][a-z0-9-]{3}|exam[a-oq-z0-9][a-z0-9-]{2}|examp[a-km-z0-9][a-z0-9-]|exampl[a-df-z0-9])\.(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?))'
+    exclude_regex: '@(?:thread\.v2|unq\.gbl\.spaces)|@[0-9]+\.|@v[0-9]|^git@|^(?:noreply|no-reply|no\.reply|donotreply|do-not-reply|mailer-daemon|postmaster|bounce|abuse|unsubscribe)@'
     keywords: []
     entropy: null
     tags: []
     checksum_type: null
     replacement_type: faker_email
-    description: "Email address excluding RFC 2606 reserved placeholder domains (example.com/net/org/invalid)"
+    description: "Email address — RFC 2606 reserved domains excluded; Teams IDs, git@ remotes, IP hosts, semver strings, and robot addresses also excluded"
     severity: high
 
-  # fix(ha.secret.ibm-cloud-iam): require real IBM IAM format — exactly 44
-  # alphanumeric+underscore+dash chars PLUS an IBM context keyword in the body.
-  # The keyword pre-filter (ibm, iam_apikey, ibmcloud) already existed; tightening
-  # the regex to exactly 44 word chars with no surrounding word chars reduces FP
-  # matches on random 44-char tokens. Before→after: ~299 FPs eliminated.
+  # fix(ha.secret.ibm-cloud-iam): this rule is intrinsically low-precision —
+  # IBM Cloud IAM keys are bare 44-char base64 strings with NO prefix, checksum
+  # or structure (upstream detect-secrets also uses bare {44}). The gateway
+  # redacts the whole regex match, so the regex can't be anchored on an
+  # `iam_apikey=` label without redacting the label too. Two levers remain:
+  #   1. entropy floor 4.3 — kills 44-char English/slug FPs (e.g. URL slugs like
+  #      "to-connect-ticket-tailor-to-..." measure ~3.5-3.8) while keeping real
+  #      random keys (~4.6+). Cannot kill high-entropy non-IBM tokens (msg/tool
+  #      IDs, signatures) — those are indistinguishable from a real key.
+  #   2. keywords narrowed to IBM-specific markers. Dropped "ibm" (3-char
+  #      substring — hits inside base64 blobs constantly) and "apikey=" (generic
+  #      to all API traffic) — both were FP amplifiers. The gateway only
+  #      activates the rule when a real IBM marker is in the body.
   - id: ha.secret.ibm-cloud-iam
     name: IBM Cloud IAM Token
     category: secret
@@ -655,12 +692,12 @@ rules:
     source: hand-authored
     confidence: low
     regex: '\b([A-Za-z0-9_-]{44})\b'
-    keywords: ["ibm", "iam_apikey", "ibmcloud", "bx login", "apikey="]
-    entropy: null
+    keywords: ["iam_apikey", "ibmcloud", "bx login"]
+    entropy: 4.3
     tags: ["hand-authored"]
     checksum_type: null
     replacement_type: faker_api_key
-    description: "IBM Cloud IAM token (44-char alphanumeric, requires IBM context keyword)"
+    description: "IBM Cloud IAM token (44-char base64, entropy>=4.3, requires IBM-specific context keyword)"
     severity: medium
 
   # fix(ha.pii.de-taxid): add non-digit boundaries and reject scientific

@@ -102,6 +102,13 @@ pub struct NormalizedRule {
     /// stable literal head exists (e.g. alternation, leading char class).
     #[serde(default)]
     pub literal_prefix: Option<String>,
+
+    /// optional post-match exclusion regex: if it matches the raw match bytes,
+    /// the detection is discarded. use in custom.yaml overrides to hard-exclude
+    /// false-positive patterns (e.g. git@ SSH remotes, Teams thread IDs) without
+    /// restructuring the main capture regex.
+    #[serde(default)]
+    pub exclude_regex: Option<String>,
 }
 
 fn default_severity() -> String {

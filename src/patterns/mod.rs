@@ -62,13 +62,17 @@ pub static COMBINED: LazyLock<AhoCorasick> = LazyLock::new(|| {
     AhoCorasick::new(keywords).expect("AhoCorasick build failed")
 });
 
-/// compiled regex per rule, paired with Arc<NormalizedRule> for zero-copy sharing
+/// compiled regex per rule, paired with Arc<NormalizedRule> and an optional exclusion regex.
+///
+/// tuple layout: (rule, main_re, exclude_re)
+/// exclude_re is compiled from NormalizedRule::exclude_regex when present; a match on the
+/// raw matched bytes causes the detection to be discarded before recording.
 ///
 /// uses the same size limits as build.rs validation (256 MB DFA) so that any regex
 /// that passed validation at compile time also compiles at runtime.
 /// POSIX (?# ... ) comments are stripped before compilation — combined.yaml may retain
 /// them in (?x) verbose patterns; Rust regex supports only # line comments in (?x) mode.
-pub static RULES: LazyLock<Vec<(Arc<NormalizedRule>, Regex)>> = LazyLock::new(|| {
+pub static RULES: LazyLock<Vec<(Arc<NormalizedRule>, Regex, Option<Regex>)>> = LazyLock::new(|| {
     NORMALIZED_RULES
         .par_iter()
         .map(|r| {
@@ -80,7 +84,12 @@ pub static RULES: LazyLock<Vec<(Arc<NormalizedRule>, Regex)>> = LazyLock::new(||
                 .unwrap_or_else(|e| {
                     panic!("regex compile failed for rule '{}': {}", r.id, e)
                 });
-            (Arc::new(r.clone()), re)
+            let excl_re = r.exclude_regex.as_deref().map(|pat| {
+                regex::bytes::Regex::new(pat).unwrap_or_else(|e| {
+                    panic!("exclude_regex compile failed for rule '{}': {}", r.id, e)
+                })
+            });
+            (Arc::new(r.clone()), re, excl_re)
         })
         .collect()
 });
@@ -118,7 +127,7 @@ fn strip_posix_comments(pattern: &str) -> String {
     result
 }
 
-pub fn get_rules() -> &'static Vec<(Arc<NormalizedRule>, Regex)> {
+pub fn get_rules() -> &'static Vec<(Arc<NormalizedRule>, Regex, Option<Regex>)> {
     &RULES
 }
 
