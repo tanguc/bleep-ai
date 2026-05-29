@@ -231,9 +231,15 @@ pub fn summary() -> Summary {
         Ok(c) => c,
         Err(_) => return Summary::default(),
     };
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
+    let now_local = chrono::Local::now();
+    // calendar-aligned cutoffs — "today" means since local midnight, not a
+    // rolling 24h window. the rolling window bled yesterday's counts into
+    // today's card; 7d/30d are likewise inclusive-of-today calendar windows.
+    let local_midnight = now_local
+        .date_naive()
+        .and_hms_opt(0, 0, 0)
+        .and_then(|dt| dt.and_local_timezone(chrono::Local).single())
+        .map(|dt| dt.timestamp())
         .unwrap_or(0);
     let one_day = 86_400;
 
@@ -251,9 +257,9 @@ pub fn summary() -> Summary {
 
     Summary {
         total,
-        last_24h: count_since(now - one_day),
-        last_7d: count_since(now - 7 * one_day),
-        last_30d: count_since(now - 30 * one_day),
+        today: count_since(local_midnight),
+        last_7d: count_since(local_midnight - 6 * one_day),
+        last_30d: count_since(local_midnight - 29 * one_day),
     }
 }
 

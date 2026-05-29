@@ -3,4 +3,17 @@
 /**
  * `GET /stats` — aggregated counts for the dashboard summary card.
  */
-export type Summary = { total: number, last_24h: number, last_7d: number, last_30d: number, };
+export type Summary = { total: number, 
+/**
+ * redactions since local midnight today — a calendar day, not a
+ * rolling 24h window (the rolling window bled yesterday's counts in).
+ */
+today: number, 
+/**
+ * last 7 calendar days, inclusive of today (since local midnight, 6 days ago).
+ */
+last_7d: number, 
+/**
+ * last 30 calendar days, inclusive of today (since local midnight, 29 days ago).
+ */
+last_30d: number, };

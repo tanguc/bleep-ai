@@ -64,10 +64,14 @@ pub struct Summary {
     // never approach 2^53.
     #[ts(type = "number")]
     pub total: u64,
+    /// redactions since local midnight today — a calendar day, not a
+    /// rolling 24h window (the rolling window bled yesterday's counts in).
     #[ts(type = "number")]
-    pub last_24h: u64,
+    pub today: u64,
+    /// last 7 calendar days, inclusive of today (since local midnight, 6 days ago).
     #[ts(type = "number")]
     pub last_7d: u64,
+    /// last 30 calendar days, inclusive of today (since local midnight, 29 days ago).
     #[ts(type = "number")]
     pub last_30d: u64,
 }

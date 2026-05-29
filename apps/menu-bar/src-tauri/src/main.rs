@@ -18,7 +18,7 @@ use tokio::time::interval;
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 struct Summary {
     total: u64,
-    last_24h: u64,
+    today: u64,
     last_7d: u64,
     last_30d: u64,
 }
@@ -181,14 +181,14 @@ fn format_tray_title(s: &Summary, connected: bool) -> String {
     if !connected {
         "Bleep •".to_string()
     } else {
-        format!("Bleep · {}", s.last_24h)
+        format!("Bleep · {}", s.today)
     }
 }
 
 fn format_menu_summary(s: &Summary) -> String {
     format!(
         "Today: {}   ·   7d: {}   ·   30d: {}   ·   total: {}",
-        s.last_24h, s.last_7d, s.last_30d, s.total
+        s.today, s.last_7d, s.last_30d, s.total
     )
 }
 
