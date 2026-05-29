@@ -321,7 +321,7 @@ tasks:
   eval:start:
     desc: start autonomous classifier daemon (tails log, classifies misses via haiku)
     cmds:
-      - nohup python3 scripts/eval-classify.py --no-keywords {{.CLI_ARGS}} > /tmp/eval-classify.log 2>&1 &
+      - nohup python3 scripts/eval-classify.py {{.CLI_ARGS}} > /tmp/eval-classify.out 2>&1 &
       - sleep 1
       - python3 scripts/eval-classify.py --status
 
@@ -338,4 +338,4 @@ tasks:
   eval:replay:
     desc: scan existing log from the beginning then switch to tail mode
     cmds:
-      - python3 scripts/eval-classify.py --replay --no-keywords {{.CLI_ARGS}}
+      - python3 scripts/eval-classify.py --replay {{.CLI_ARGS}}

@@ -239,6 +239,43 @@ REASON: <one short sentence>
 """
 
 
+def resolve_real_claude() -> str:
+    """Resolve the real claude binary, bypassing the bleep wrapper shim.
+
+    The classifier prompt embeds the very sensitive text it asks the model to
+    judge. Routing that call through `claude` (the bleep shim) would send it
+    via the MITM gateway, which redacts the value before the model sees it —
+    the eval would then measure bleep's redaction through an instrument bleep
+    is itself filtering. So we must exec the unwrapped binary directly.
+
+    Mirrors the wrapper's own newest-version scan of ~/.local/share/claude/versions.
+    """
+    versions = Path.home() / ".local/share/claude/versions"
+    if versions.is_dir():
+        def ver_key(p: Path):
+            try:
+                return tuple(int(x) for x in p.name.split("."))
+            except ValueError:
+                return ()
+        cands = sorted((p for p in versions.iterdir() if os.access(p, os.X_OK)),
+                       key=ver_key)
+        if cands:
+            return str(cands[-1])
+    # fallback: path the wrapper last persisted
+    claude_path = Path.home() / ".local/lib/bleep/.claude-path"
+    if claude_path.is_file():
+        p = claude_path.read_text().strip()
+        if p and os.access(p, os.X_OK):
+            return p
+    # last resort: bare name (will hit the shim — eval may be contaminated)
+    print("WARN: could not resolve unwrapped claude; falling back to shim",
+          file=sys.stderr)
+    return "claude"
+
+
+REAL_CLAUDE = resolve_real_claude()
+
+
 def classify_miss(match: dict, url: str, context: str, model: str) -> tuple[str, str]:
     prompt = CLASSIFY_PROMPT.format(
         rule_id=match["rule_id"],
@@ -250,7 +287,7 @@ def classify_miss(match: dict, url: str, context: str, model: str) -> tuple[str,
     )
     try:
         result = subprocess.run(
-            ["claude", "-p", prompt, "--model", model],
+            [REAL_CLAUDE, "-p", prompt, "--model", model],
             capture_output=True,
             text=True,
             timeout=30,
@@ -534,6 +571,8 @@ def main() -> None:
     project_root = Path(__file__).resolve().parent.parent
 
     ap = argparse.ArgumentParser(description="Autonomous bleep-gateway eval classifier")
+    # canonical request-log path — must match BLEEP_LOG_PATH/LOG_FILE in
+    # src/request_logger.rs (the gateway writes there when BLEEP_LOG_REQUESTS=1)
     ap.add_argument("jsonl", nargs="?", default="/tmp/bleep-requests.jsonl")
     ap.add_argument("--rules", default=str(project_root / "rules" / "combined.yaml"))
     ap.add_argument("--no-keywords", action="store_true")
