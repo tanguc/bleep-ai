@@ -282,6 +282,12 @@ h2 {
 .redacted-table .td-time { color: var(--fg-dim); white-space: nowrap; }
 #dd-back { cursor: pointer; }
 
+/* mode switching: hide the inactive panel */
+#dd-wrap.dd-mode-grouped .dd-flat-table { display: none; }
+#dd-wrap.dd-mode-flat .dd-grouped-list  { display: none; }
+/* default (no class yet): show grouped, hide flat */
+#dd-wrap:not(.dd-mode-flat) .dd-flat-table { display: none; }
+
 /* header: title on the left, back button pinned top-right. */
 .dd-header {
   display: flex;
@@ -293,6 +299,191 @@ h2 {
   align-self: flex-start;
   white-space: nowrap;
 }
+
+/* ── drilldown toolbar rows ──────────────────────────────────────────── */
+.dd-toolbar-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.dd-view-toggle {
+  display: flex;
+  gap: 4px;
+  flex: none;
+}
+
+.dd-date-row {
+  font-size: 11px;
+  color: var(--fg-dim);
+  padding: 6px 10px;
+  background: var(--bg-elev2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  gap: 8px;
+}
+
+.dd-date-label {
+  font-size: 11px;
+  color: var(--fg-dim);
+  white-space: nowrap;
+}
+
+.dd-dateinput {
+  font: 11px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  background: var(--bg-elev3);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--fg);
+  padding: 4px 8px;
+  outline: none;
+  color-scheme: dark;
+  transition: border-color 120ms ease-out;
+}
+.dd-dateinput:focus { border-color: var(--accent); }
+.dd-dateinput::-webkit-calendar-picker-indicator {
+  filter: invert(0.6);
+  cursor: pointer;
+}
+
+.dd-quick-dates {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-left: 4px;
+}
+
+/* ── grouped view ────────────────────────────────────────────────────── */
+.dd-grouped-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-bottom: 4px;
+}
+
+.dd-group {
+  border-radius: 7px;
+  overflow: hidden;
+  border: 1px solid transparent;
+  transition: border-color 120ms ease-out;
+}
+.dd-group:hover { border-color: var(--border); }
+.dd-group.dd-group--open { border-color: var(--border); }
+
+.dd-group-row {
+  display: grid;
+  grid-template-columns: 44px 1fr auto auto 120px 16px;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border-radius: 7px;
+  background: var(--bg-elev2);
+  cursor: pointer;
+  transition: background 100ms ease-out;
+}
+.dd-group-row:hover { background: var(--bg-elev3); }
+.dd-group--open .dd-group-row {
+  background: var(--bg-elev3);
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.dd-group-count {
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.dd-group-orig {
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+  font-size: 11px;
+  color: var(--fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  border-radius: 3px;
+}
+.dd-group-orig:hover { background: rgba(255,255,255,0.06); }
+.dd-group-orig.copied { color: var(--green); }
+
+.dd-group-pill { flex: none; }
+
+.dd-group-rule {
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+  font-size: 10px;
+  color: var(--accent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dd-group-time {
+  font-size: 10px;
+  color: var(--fg-dim);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.dd-group-caret {
+  color: var(--fg-dim);
+  font-size: 10px;
+  text-align: center;
+  user-select: none;
+  width: 16px;
+}
+
+/* expanded sub-rows */
+.dd-subrows {
+  background: var(--bg-elev1);
+  border-top: 1px solid var(--border);
+  padding: 6px 10px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  border-bottom-left-radius: 6px;
+  border-bottom-right-radius: 6px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.dd-subrow {
+  display: grid;
+  grid-template-columns: 72px 16px 1fr;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  padding: 2px 0;
+}
+
+.dd-subrow-arrow {
+  color: var(--border);
+  text-align: center;
+}
+
+.dd-subrow-fake {
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+  font-size: 11px;
+  color: var(--orange);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  border-radius: 3px;
+}
+.dd-subrow-fake:hover { background: rgba(255,255,255,0.05); }
+.dd-subrow-fake.copied { color: var(--green); }
 
 /* column widths for the drilldown table — time narrow, fake/original widest
    because that's where the actual signal lives. Overrides the generic

@@ -34,14 +34,17 @@ const DEFAULT_ROUTE = "dashboard";
 
 // drilldown state — survives route transitions so scroll resumes cleanly
 const drilldown = {
-  filter: {},        // { category?, subcategory?, rule_id?, q? }
+  filter: {},        // { category?, subcategory?, rule_id?, q?, since?, until? }
   rows: [],          // accumulated RedactedRow[]
   cursor: null,      // next page cursor; null = exhausted
   loading: false,
   loadedFirstPage: false,
-  // per-column UI filters (client-side, post-fetch). Persist across navigations
-  // so re-entering the route keeps the user's narrowing intact.
+  // per-column UI filters (client-side, post-fetch). Persist across navigations.
   colFilters: { time: "", category: "", rule: "", subcategory: "", original: "", fake: "" },
+  // grouped view state
+  viewMode: "grouped",       // "grouped" | "flat"
+  groups: new Map(),         // original -> GroupEntry
+  expandedGroups: new Set(), // original strings currently expanded
 };
 
 let activeRoute = null;
@@ -204,10 +207,10 @@ function severityClass(sev) {
 
 const TRUNCATE_AT = 24;
 
-function truncate(s) {
+function truncate(s, maxLen = TRUNCATE_AT) {
   const str = String(s ?? "");
-  if (str.length <= TRUNCATE_AT) return { display: str, truncated: false };
-  return { display: str.slice(0, TRUNCATE_AT) + "…", truncated: true };
+  if (str.length <= maxLen) return { display: str, truncated: false };
+  return { display: str.slice(0, maxLen) + "…", truncated: true };
 }
 
 // Renders a copy-on-click cell. Full value goes into title (native tooltip)
@@ -374,10 +377,9 @@ async function refreshDashboard() {
   if (!port) { setConnection(false); return; }
   try {
     console.debug("fetching dashboard data from port", port);
-    const [summary, categories, rules] = await perf.timeAsync("refreshDashboard.fetchAll", () => Promise.all([
+    const [summary, categories] = await perf.timeAsync("refreshDashboard.fetchAll", () => Promise.all([
       /** @type {Promise<Summary>} */         (fetchJson(port, "/stats")),
       /** @type {Promise<CategoryCount[]>} */ (fetchJson(port, "/stats/categories")),
-      /** @type {Promise<RuleCount[]>} */     (fetchJson(port, "/stats/rules?limit=10")),
     ]));
     setConnection(true);
     renderCounter(document.getElementById("m-today"), summary.today);
@@ -385,10 +387,8 @@ async function refreshDashboard() {
     renderCounter(document.getElementById("m-30d"),   summary.last_30d);
     renderCounter(document.getElementById("m-total"), summary.total);
     const cats = document.getElementById("categories");
-    const rs = document.getElementById("rules");
     if (cats) renderBars(cats, categories, "subcategory", "category", (i) => categoryClass(i.category));
-    if (rs)   renderBars(rs, rules, "rule_id", null, () => "cat-other");
-    perf.record("refreshDashboard", performance.now() - tAll, { cats: categories.length, rules: rules.length });
+    perf.record("refreshDashboard", performance.now() - tAll, { cats: categories.length });
   } catch (e) {
     setConnection(false);
     perf.record("refreshDashboard.error", performance.now() - tAll, { err: String(e) });
@@ -842,6 +842,8 @@ function openDrilldown(filter) {
   drilldown.cursor = null;
   drilldown.loadedFirstPage = false;
   drilldown.loading = false;
+  drilldown.groups = new Map();
+  drilldown.expandedGroups = new Set();
   // force a re-render even if we're already on drilldown
   activeRoute = null;
   navigateTo("drilldown");
@@ -859,12 +861,14 @@ function drilldownTitle() {
 function drilldownUrl() {
   const f = drilldown.filter;
   const p = new URLSearchParams();
-  if (f.category) p.set("category", f.category);
+  if (f.category)   p.set("category",    f.category);
   if (f.subcategory) p.set("subcategory", f.subcategory);
-  if (f.rule_id) p.set("rule_id", f.rule_id);
-  if (f.q) p.set("q", f.q);
+  if (f.rule_id)    p.set("rule_id",     f.rule_id);
+  if (f.q)          p.set("q",           f.q);
+  if (f.since != null) p.set("since", String(f.since));
+  if (f.until != null) p.set("until", String(f.until));
   if (drilldown.cursor) p.set("cursor", drilldown.cursor);
-  p.set("limit", "100");
+  p.set("limit", "200");
   return `/redactions?${p.toString()}`;
 }
 
@@ -885,7 +889,6 @@ async function loadDrilldownPage() {
     drilldown.cursor = page.next_cursor;
     drilldown.loadedFirstPage = true;
     appendDrilldownRows(page.rows);
-    updateDrilldownCount();
     if (sentinel) {
       sentinel.textContent = drilldown.cursor === null
         ? (drilldown.rows.length === 0 ? "no matches" : `— end · ${drilldown.rows.length} rows —`)
@@ -903,17 +906,52 @@ async function loadDrilldownPage() {
 /** @param {RedactedRow[]} rows */
 function appendDrilldownRows(rows) {
   const t = performance.now();
-  const body = document.getElementById("dd-body");
-  if (!body) return;
-  // column order is locked to the <thead> in index.html:
-  // Time | Category | Rule | Subcategory | Original | Fake
-  // dataset attrs let the per-column filter inputs do client-side match.
-  const html = rows.map((r) => {
+
+  // always update groups map regardless of view mode
+  for (const r of rows) {
+    const key = r.original || "";
+    let g = drilldown.groups.get(key);
+    if (!g) {
+      g = {
+        original: key,
+        fake: r.fake_value || "",
+        rule_id: r.rule_id || "",
+        category: r.category || "",
+        subcategory: r.subcategory || "",
+        count: 0,
+        firstSeen: r.ts,
+        lastSeen: r.ts,
+        rows: [],
+      };
+      drilldown.groups.set(key, g);
+    }
+    g.count++;
+    if (r.ts < g.firstSeen) g.firstSeen = r.ts;
+    if (r.ts > g.lastSeen)  g.lastSeen  = r.ts;
+    g.rows.push(r);
+  }
+
+  if (drilldown.viewMode === "flat") {
+    const body = document.getElementById("dd-body");
+    if (body) {
+      body.insertAdjacentHTML("beforeend", buildFlatHtml(rows));
+      applyColumnFilters();
+    }
+  } else {
+    renderGroupedView();
+  }
+
+  perf.record("appendDrilldownRows", performance.now() - t, { rows: rows.length, mode: drilldown.viewMode });
+}
+
+/** Build HTML for flat table rows from an array of RedactedRow */
+function buildFlatHtml(rows) {
+  return rows.map((r) => {
     const time = fmtTime(new Date(r.ts * 1000));
-    const cat = r.category || "";
-    const rule = r.rule_id || "";
-    const sub = r.subcategory || "";
-    const orig = r.original || "";
+    const cat  = r.category || "";
+    const rule = r.rule_id  || "";
+    const sub  = r.subcategory || "";
+    const orig = r.original   || "";
     const fake = r.fake_value || "";
     return `
     <tr
@@ -929,24 +967,131 @@ function appendDrilldownRows(rows) {
       <td>${escapeHtml(sub)}</td>
       ${renderCopyCell(orig, "td-original")}
       ${renderCopyCell(fake, "td-fake")}
-    </tr>
-  `;
+    </tr>`;
   }).join("");
-  body.insertAdjacentHTML("beforeend", html);
-  applyColumnFilters();
-  perf.record("appendDrilldownRows", performance.now() - t, { rows: rows.length });
 }
 
-function updateDrilldownCount() {
+/** Render the grouped list from drilldown.groups, applying colFilters. */
+function renderGroupedView() {
+  const container = document.getElementById("dd-grouped-list");
+  if (!container) return;
+
+  const origQ = (drilldown.colFilters.original || "").toLowerCase();
+  const ruleQ = (drilldown.colFilters.rule     || "").toLowerCase();
+  const catQ  = (drilldown.colFilters.category || "").toLowerCase();
+  const subQ  = (drilldown.colFilters.subcategory || "").toLowerCase();
+
+  let groups = [...drilldown.groups.values()];
+  if (origQ) groups = groups.filter(g => g.original.toLowerCase().includes(origQ));
+  if (ruleQ) groups = groups.filter(g => g.rule_id.toLowerCase().includes(ruleQ));
+  if (catQ)  groups = groups.filter(g => g.category.toLowerCase().includes(catQ));
+  if (subQ)  groups = groups.filter(g => g.subcategory.toLowerCase().includes(subQ));
+  groups.sort((a, b) => b.count - a.count);
+
+  if (groups.length === 0) {
+    container.innerHTML = '<div class="empty">no matches</div>';
+    updateDrilldownCount(0, 0);
+    return;
+  }
+
+  const html = groups.map(g => {
+    const isOpen = drilldown.expandedGroups.has(g.original);
+    const catClass = categoryClass(g.category);
+    const { display: origDisp, truncated: origTrunc } = truncate(g.original, 52);
+
+    // time badge: single timestamp or range
+    let timeBadge;
+    if (g.firstSeen === g.lastSeen) {
+      timeBadge = fmtTime(new Date(g.lastSeen * 1000));
+    } else {
+      const d1 = new Date(g.firstSeen * 1000);
+      const d2 = new Date(g.lastSeen  * 1000);
+      const sameDay = d1.toDateString() === d2.toDateString();
+      timeBadge = sameDay
+        ? `${fmtTime(d1)} – ${fmtTime(d2)}`
+        : `${d1.toLocaleDateString([], { month: "short", day: "numeric" })} – ${fmtTime(d2)}`;
+    }
+
+    let subRowsHtml = "";
+    if (isOpen) {
+      subRowsHtml = g.rows.map(r => {
+        const { display: fakeDisp } = truncate(r.fake_value || "", 44);
+        return `<div class="dd-subrow">
+          <span class="td-time">${escapeHtml(fmtTime(new Date(r.ts * 1000)))}</span>
+          <span class="dd-subrow-arrow">→</span>
+          <code class="copyable dd-subrow-fake" data-full="${escapeHtml(r.fake_value || "")}" title="${escapeHtml(r.fake_value || "")}">${escapeHtml(fakeDisp)}</code>
+        </div>`;
+      }).join("");
+    }
+
+    return `<div class="dd-group${isOpen ? " dd-group--open" : ""}" data-key="${escapeHtml(g.original)}">
+      <div class="dd-group-row">
+        <span class="dd-group-count">×${g.count}</span>
+        <code class="dd-group-orig copyable${origTrunc ? " truncated" : ""}"
+              data-full="${escapeHtml(g.original)}"
+              title="${escapeHtml(g.original)}">${escapeHtml(origDisp)}</code>
+        <span class="pill ${catClass} dd-group-pill">${escapeHtml(g.subcategory || g.category)}</span>
+        <span class="dd-group-rule">${escapeHtml(g.rule_id)}</span>
+        <span class="td-time dd-group-time">${escapeHtml(timeBadge)}</span>
+        <span class="dd-group-caret">${isOpen ? "▾" : "▸"}</span>
+      </div>
+      ${isOpen ? `<div class="dd-subrows">${subRowsHtml}</div>` : ""}
+    </div>`;
+  }).join("");
+
+  container.innerHTML = html;
+
+  // delegated click: expand/collapse + copy (bind once; innerHTML replaces children, not container)
+  if (!container.dataset.clickBound) {
+    container.dataset.clickBound = "1";
+    container.addEventListener("click", (e) => {
+      // copy handler has priority
+      const code = e.target.closest(".copyable");
+      if (code) {
+        e.stopPropagation();
+        const full = code.dataset.full ?? code.textContent ?? "";
+        navigator.clipboard?.writeText(full).then(() => {
+          code.classList.add("copied");
+          setTimeout(() => code.classList.remove("copied"), 600);
+        }).catch(() => {});
+        return;
+      }
+      // expand / collapse group
+      const group = e.target.closest(".dd-group");
+      if (!group) return;
+      const key = group.dataset.key;
+      if (drilldown.expandedGroups.has(key)) drilldown.expandedGroups.delete(key);
+      else drilldown.expandedGroups.add(key);
+      renderGroupedView();
+    });
+  }
+
+  updateDrilldownCount(groups.length, drilldown.groups.size);
+}
+
+function updateDrilldownCount(visibleGroups, totalGroups) {
   const el = document.getElementById("dd-count");
   if (!el) return;
   const more = drilldown.cursor === null ? "" : "+";
-  el.textContent = `${drilldown.rows.length}${more} rows`;
+  if (drilldown.viewMode === "grouped") {
+    const total = drilldown.rows.length;
+    if (visibleGroups != null && visibleGroups !== totalGroups) {
+      el.textContent = `${visibleGroups} / ${totalGroups} groups · ${total}${more} events`;
+    } else {
+      el.textContent = `${totalGroups != null ? totalGroups : drilldown.groups.size} groups · ${total}${more} events`;
+    }
+  } else {
+    el.textContent = `${drilldown.rows.length}${more} rows`;
+  }
 }
 
 // hide rows whose data-* attributes don't match every active per-column
-// filter. Uses CSS display:none so virtualization/scroll math still works.
+// filter. In grouped mode the filter re-renders the grouped list instead.
 function applyColumnFilters() {
+  if (drilldown.viewMode === "grouped") {
+    renderGroupedView();
+    return;
+  }
   const body = document.getElementById("dd-body");
   if (!body) return;
   const f = drilldown.colFilters;
@@ -972,19 +1117,52 @@ function applyColumnFilters() {
 }
 
 function initDrilldown() {
-  const title = document.getElementById("dd-title");
-  const sub = document.getElementById("dd-subtitle");
-  const back = document.getElementById("dd-back");
-  const search = document.getElementById("dd-search");
-  const wrap = document.getElementById("dd-wrap");
-  const body = document.getElementById("dd-body");
+  const title    = document.getElementById("dd-title");
+  const sub      = document.getElementById("dd-subtitle");
+  const back     = document.getElementById("dd-back");
+  const search   = document.getElementById("dd-search");
+  const wrap     = document.getElementById("dd-wrap");
+  const body     = document.getElementById("dd-body");
+  const grouped  = document.getElementById("dd-grouped-list");
 
   if (title) title.textContent = drilldownTitle();
   if (sub) {
     const f = drilldown.filter;
     sub.textContent = `historical redactions${f.q ? ` matching "${f.q}"` : ""}`;
   }
-  if (body) body.innerHTML = "";
+  if (body)    body.innerHTML    = "";
+  if (grouped) grouped.innerHTML = "";
+
+  // apply current view mode class to the wrap
+  if (wrap) {
+    wrap.classList.toggle("dd-mode-grouped", drilldown.viewMode === "grouped");
+    wrap.classList.toggle("dd-mode-flat",    drilldown.viewMode === "flat");
+  }
+
+  // ── view mode toggle ────────────────────────────────────────────────
+  const groupedBtn = document.getElementById("dd-view-grouped");
+  const flatBtn    = document.getElementById("dd-view-flat");
+  const setViewMode = (mode) => {
+    drilldown.viewMode = mode;
+    groupedBtn?.classList.toggle("active", mode === "grouped");
+    flatBtn?.classList.toggle("active",    mode === "flat");
+    wrap?.classList.toggle("dd-mode-grouped", mode === "grouped");
+    wrap?.classList.toggle("dd-mode-flat",    mode === "flat");
+    if (mode === "grouped") {
+      renderGroupedView();
+    } else {
+      // rebuild flat view from accumulated rows
+      if (body) {
+        body.innerHTML = buildFlatHtml(drilldown.rows);
+        applyColumnFilters();
+      }
+      updateDrilldownCount();
+    }
+  };
+  groupedBtn?.addEventListener("click", () => setViewMode("grouped"));
+  flatBtn?.addEventListener("click",    () => setViewMode("flat"));
+
+  // ── global search (re-fetches from server) ─────────────────────────
   if (search) {
     search.value = drilldown.filter.q || "";
     let t;
@@ -992,19 +1170,14 @@ function initDrilldown() {
       clearTimeout(t);
       t = setTimeout(() => {
         drilldown.filter.q = search.value.trim() || undefined;
-        drilldown.rows = [];
-        drilldown.cursor = null;
-        drilldown.loadedFirstPage = false;
-        if (body) body.innerHTML = "";
-        loadDrilldownPage();
+        _resetAndReload();
       }, 200);
     });
   }
+
   if (back) back.addEventListener("click", () => navigateTo("dashboard"));
 
-  // per-column filters — client-side, applies to already-loaded rows. State
-  // lives on the `drilldown.colFilters` map so it survives loadDrilldownPage
-  // appending new rows.
+  // ── per-column filters (client-side) ───────────────────────────────
   document.querySelectorAll(".dd-colfilter").forEach((input) => {
     const col = input.dataset.col;
     input.value = (drilldown.colFilters && drilldown.colFilters[col]) || "";
@@ -1017,14 +1190,84 @@ function initDrilldown() {
       }, 80);
     });
   });
+
+  // ── date range filter ──────────────────────────────────────────────
+  const dateFrom    = document.getElementById("dd-date-from");
+  const dateTo      = document.getElementById("dd-date-to");
+  const quickDates  = document.getElementById("dd-quick-dates");
+
+  // restore datetime inputs from existing filter state
+  if (dateFrom && drilldown.filter.since != null)
+    dateFrom.value = _tsToDatetimeLocal(drilldown.filter.since);
+  if (dateTo && drilldown.filter.until != null)
+    dateTo.value = _tsToDatetimeLocal(drilldown.filter.until);
+
+  if (dateFrom) {
+    dateFrom.addEventListener("change", () => {
+      drilldown.filter.since = dateFrom.value ? _datetimeLocalToTs(dateFrom.value) : null;
+      _clearQuickActive();
+      _resetAndReload();
+    });
+  }
+  if (dateTo) {
+    dateTo.addEventListener("change", () => {
+      drilldown.filter.until = dateTo.value ? _datetimeLocalToTs(dateTo.value) : null;
+      _clearQuickActive();
+      _resetAndReload();
+    });
+  }
+  if (quickDates) {
+    // mark initial active preset
+    if (drilldown.filter.since == null && drilldown.filter.until == null) {
+      quickDates.querySelector('[data-preset="all"]')?.classList.add("active");
+    }
+    quickDates.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-preset]");
+      if (!btn) return;
+      _clearQuickActive();
+      btn.classList.add("active");
+      const now     = Math.floor(Date.now() / 1000);
+      const midnightMs = new Date().setHours(0, 0, 0, 0);
+      const midnight   = Math.floor(midnightMs / 1000);
+      switch (btn.dataset.preset) {
+        case "all":
+          drilldown.filter.since = null;
+          drilldown.filter.until = null;
+          if (dateFrom) dateFrom.value = "";
+          if (dateTo)   dateTo.value   = "";
+          break;
+        case "today":
+          drilldown.filter.since = midnight;
+          drilldown.filter.until = null;
+          if (dateFrom) dateFrom.value = _tsToDatetimeLocal(midnight);
+          if (dateTo)   dateTo.value   = "";
+          break;
+        case "7d":
+          drilldown.filter.since = midnight - 6 * 86400;
+          drilldown.filter.until = null;
+          if (dateFrom) dateFrom.value = _tsToDatetimeLocal(midnight - 6 * 86400);
+          if (dateTo)   dateTo.value   = "";
+          break;
+        case "30d":
+          drilldown.filter.since = midnight - 29 * 86400;
+          drilldown.filter.until = null;
+          if (dateFrom) dateFrom.value = _tsToDatetimeLocal(midnight - 29 * 86400);
+          if (dateTo)   dateTo.value   = "";
+          break;
+      }
+      _resetAndReload();
+    });
+  }
+
+  // ── infinite scroll ────────────────────────────────────────────────
   if (wrap) {
-    // infinite scroll — when sentinel comes into view, fetch next page
     wrap.addEventListener("scroll", () => {
       const remaining = wrap.scrollHeight - wrap.scrollTop - wrap.clientHeight;
       if (remaining < 200) loadDrilldownPage();
     });
-    // copy-on-click for truncated cells (same UX as live tail)
+    // copy-on-click for truncated cells in flat view
     wrap.addEventListener("click", (ev) => {
+      if (drilldown.viewMode !== "flat") return;
       const code = ev.target.closest(".copyable");
       if (!code) return;
       ev.stopPropagation();
@@ -1035,7 +1278,39 @@ function initDrilldown() {
       }).catch(() => {});
     });
   }
+
   loadDrilldownPage();
+}
+
+// ── drilldown internal helpers ─────────────────────────────────────────
+
+function _resetAndReload() {
+  drilldown.rows = [];
+  drilldown.cursor = null;
+  drilldown.loadedFirstPage = false;
+  drilldown.groups = new Map();
+  drilldown.expandedGroups = new Set();
+  const body    = document.getElementById("dd-body");
+  const grouped = document.getElementById("dd-grouped-list");
+  if (body)    body.innerHTML    = "";
+  if (grouped) grouped.innerHTML = "";
+  loadDrilldownPage();
+}
+
+function _clearQuickActive() {
+  document.querySelectorAll("#dd-quick-dates [data-preset]")
+    .forEach(b => b.classList.remove("active"));
+}
+
+function _tsToDatetimeLocal(ts) {
+  // format unix ts as "YYYY-MM-DDTHH:mm" for datetime-local input value
+  const d = new Date(ts * 1000);
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function _datetimeLocalToTs(val) {
+  return Math.floor(new Date(val).getTime() / 1000);
 }
 
 listen("redaction", onRedactionEvent).catch((err) =>

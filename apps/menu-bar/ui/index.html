@@ -57,19 +57,10 @@
       </div>
     </section>
 
-    <section class="grid">
-      <div class="panel">
-        <h2>By category</h2>
-        <div id="categories" class="bar-chart">
-          <div class="empty">no redactions yet</div>
-        </div>
-      </div>
-
-      <div class="panel">
-        <h2>Top rules</h2>
-        <div id="rules" class="bar-chart">
-          <div class="empty">no redactions yet</div>
-        </div>
+    <section class="panel">
+      <h2>By category</h2>
+      <div id="categories" class="bar-chart">
+        <div class="empty">no redactions yet</div>
       </div>
     </section>
 
@@ -119,14 +110,41 @@
       <button type="button" id="dd-back" class="chip dd-back" title="back to dashboard">← back</button>
     </header>
     <section class="panel">
-      <div class="tail-filters">
+
+      <!-- toolbar row 1: search + view toggle + count -->
+      <div class="dd-toolbar-row">
         <input type="search" id="dd-search" class="tail-search"
                placeholder="search original / fake / rule_id…"
                autocomplete="off" spellcheck="false" />
+        <div class="dd-view-toggle">
+          <button type="button" id="dd-view-grouped" class="chip active">grouped</button>
+          <button type="button" id="dd-view-flat"    class="chip">flat</button>
+        </div>
         <span class="dim tail-match-count" id="dd-count"></span>
       </div>
+
+      <!-- toolbar row 2: date range -->
+      <div class="dd-toolbar-row dd-date-row">
+        <span class="dd-date-label">from</span>
+        <input type="datetime-local" id="dd-date-from" class="dd-dateinput" />
+        <span class="dd-date-label">to</span>
+        <input type="datetime-local" id="dd-date-to"   class="dd-dateinput" />
+        <div class="dd-quick-dates" id="dd-quick-dates">
+          <button type="button" class="chip" data-preset="today">today</button>
+          <button type="button" class="chip" data-preset="7d">7 days</button>
+          <button type="button" class="chip" data-preset="30d">30 days</button>
+          <button type="button" class="chip active" data-preset="all">all time</button>
+        </div>
+      </div>
+
+      <!-- main content area — class drives grouped/flat visibility -->
       <div class="redacted-table-wrap" id="dd-wrap">
-        <table class="redacted-table dd-table">
+
+        <!-- grouped view (default) -->
+        <div id="dd-grouped-list" class="dd-grouped-list"></div>
+
+        <!-- flat table view -->
+        <table class="redacted-table dd-table dd-flat-table">
           <thead>
             <tr class="dd-headrow">
               <th class="dd-col-time">Time</th>
@@ -137,16 +155,17 @@
               <th class="dd-col-fake">Fake</th>
             </tr>
             <tr class="dd-filterrow">
-              <th><input type="search" data-col="time" class="dd-colfilter" placeholder="filter…" autocomplete="off" spellcheck="false" /></th>
-              <th><input type="search" data-col="category" class="dd-colfilter" placeholder="filter…" autocomplete="off" spellcheck="false" /></th>
-              <th><input type="search" data-col="rule" class="dd-colfilter" placeholder="filter…" autocomplete="off" spellcheck="false" /></th>
+              <th><input type="search" data-col="time"        class="dd-colfilter" placeholder="filter…" autocomplete="off" spellcheck="false" /></th>
+              <th><input type="search" data-col="category"    class="dd-colfilter" placeholder="filter…" autocomplete="off" spellcheck="false" /></th>
+              <th><input type="search" data-col="rule"        class="dd-colfilter" placeholder="filter…" autocomplete="off" spellcheck="false" /></th>
               <th><input type="search" data-col="subcategory" class="dd-colfilter" placeholder="filter…" autocomplete="off" spellcheck="false" /></th>
-              <th><input type="search" data-col="original" class="dd-colfilter" placeholder="filter…" autocomplete="off" spellcheck="false" /></th>
-              <th><input type="search" data-col="fake" class="dd-colfilter" placeholder="filter…" autocomplete="off" spellcheck="false" /></th>
+              <th><input type="search" data-col="original"    class="dd-colfilter" placeholder="filter…" autocomplete="off" spellcheck="false" /></th>
+              <th><input type="search" data-col="fake"        class="dd-colfilter" placeholder="filter…" autocomplete="off" spellcheck="false" /></th>
             </tr>
           </thead>
           <tbody id="dd-body"></tbody>
         </table>
+
         <div id="dd-sentinel" class="dim" style="padding:8px; text-align:center;">loading…</div>
       </div>
     </section>
