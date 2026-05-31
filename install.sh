@@ -293,6 +293,15 @@ install_claude_override() {
   # create claude shim pointing to the bleep wrapper
   ln -sf "${PREFIX}/${INSTALL_LIB_REL}/bleep-wrapper.sh" "${PREFIX}/bin/claude"
   log "claude override installed: ${PREFIX}/bin/claude -> bleep-wrapper.sh (real binary: $real_claude)"
+
+  # bclaude — bypass-mode alias: same wrapper, BLEEP_BYPASS=1 pre-set so
+  # traffic goes direct to Anthropic. useful during bleep development/testing.
+  cat > "${PREFIX}/bin/bclaude" <<'BCLAUDE'
+#!/usr/bin/env bash
+exec env BLEEP_BYPASS=1 claude "$@"
+BCLAUDE
+  chmod 0755 "${PREFIX}/bin/bclaude"
+  log "bclaude installed: ${PREFIX}/bin/bclaude (bypass-mode alias)"
 }
 
 # Install a LaunchAgent that ad-hoc re-signs self-updating binaries the moment
@@ -483,6 +492,7 @@ uninstall() {
     rm -f "$claude_link"
     log "removed claude override: $claude_link"
   fi
+  rm -f "${PREFIX}/bin/bclaude"
   log "removed binaries from ${PREFIX}/bin"
 
   # 3. remove install lib tree (wrapper, cert.pem, .version)
