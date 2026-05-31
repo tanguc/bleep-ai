@@ -45,6 +45,9 @@ const drilldown = {
   viewMode: "grouped",       // "grouped" | "flat"
   groups: new Map(),         // original -> GroupEntry
   expandedGroups: new Set(), // original strings currently expanded
+  // grouped sort state
+  sortBy: "count",           // "count" | "original" | "subcategory" | "rule_id" | "lastSeen"
+  sortDir: "desc",           // "asc" | "desc"
 };
 
 let activeRoute = null;
@@ -986,15 +989,41 @@ function renderGroupedView() {
   if (ruleQ) groups = groups.filter(g => g.rule_id.toLowerCase().includes(ruleQ));
   if (catQ)  groups = groups.filter(g => g.category.toLowerCase().includes(catQ));
   if (subQ)  groups = groups.filter(g => g.subcategory.toLowerCase().includes(subQ));
-  groups.sort((a, b) => b.count - a.count);
+
+  // sort by active column
+  const dir = drilldown.sortDir === "asc" ? 1 : -1;
+  groups.sort((a, b) => {
+    switch (drilldown.sortBy) {
+      case "original":    return a.original.localeCompare(b.original) * dir;
+      case "subcategory": return (a.subcategory || a.category).localeCompare(b.subcategory || b.category) * dir;
+      case "rule_id":     return a.rule_id.localeCompare(b.rule_id) * dir;
+      case "lastSeen":    return (a.lastSeen - b.lastSeen) * dir;
+      default:            return (a.count - b.count) * dir;
+    }
+  });
+
+  // ── sticky header row ────────────────────────────────────────────────
+  const COLS = [
+    { key: "count",       label: "Count"    },
+    { key: "original",    label: "Original" },
+    { key: "subcategory", label: "Category" },
+    { key: "rule_id",     label: "Rule"     },
+    { key: "lastSeen",    label: "Time"     },
+  ];
+  const headerHtml = `<div class="dd-group-header">${COLS.map(c => {
+    const active = drilldown.sortBy === c.key;
+    const arrow  = active ? (drilldown.sortDir === "desc" ? " ▾" : " ▴") : "";
+    return `<span class="dd-gh-cell${active ? " dd-gh-active" : ""}" data-sort="${c.key}">${c.label}${arrow}</span>`;
+  }).join("")}<span class="dd-gh-cell dd-gh-spacer"></span></div>`;
 
   if (groups.length === 0) {
-    container.innerHTML = '<div class="empty">no matches</div>';
+    container.innerHTML = headerHtml + '<div class="empty">no matches</div>';
+    _bindGroupedEvents(container);
     updateDrilldownCount(0, 0);
     return;
   }
 
-  const html = groups.map(g => {
+  const rowsHtml = groups.map(g => {
     const isOpen = drilldown.expandedGroups.has(g.original);
     const catClass = categoryClass(g.category);
     const { display: origDisp, truncated: origTrunc } = truncate(g.original, 52);
@@ -1039,34 +1068,49 @@ function renderGroupedView() {
     </div>`;
   }).join("");
 
-  container.innerHTML = html;
-
-  // delegated click: expand/collapse + copy (bind once; innerHTML replaces children, not container)
-  if (!container.dataset.clickBound) {
-    container.dataset.clickBound = "1";
-    container.addEventListener("click", (e) => {
-      // copy handler has priority
-      const code = e.target.closest(".copyable");
-      if (code) {
-        e.stopPropagation();
-        const full = code.dataset.full ?? code.textContent ?? "";
-        navigator.clipboard?.writeText(full).then(() => {
-          code.classList.add("copied");
-          setTimeout(() => code.classList.remove("copied"), 600);
-        }).catch(() => {});
-        return;
-      }
-      // expand / collapse group
-      const group = e.target.closest(".dd-group");
-      if (!group) return;
-      const key = group.dataset.key;
-      if (drilldown.expandedGroups.has(key)) drilldown.expandedGroups.delete(key);
-      else drilldown.expandedGroups.add(key);
-      renderGroupedView();
-    });
-  }
+  container.innerHTML = headerHtml + rowsHtml;
+  _bindGroupedEvents(container);
 
   updateDrilldownCount(groups.length, drilldown.groups.size);
+}
+
+// wire header sort + row expand/copy on the grouped list container (once)
+function _bindGroupedEvents(container) {
+  if (container.dataset.clickBound) return;
+  container.dataset.clickBound = "1";
+  container.addEventListener("click", (e) => {
+    // sort header click
+    const hcell = e.target.closest(".dd-gh-cell[data-sort]");
+    if (hcell) {
+      const key = hcell.dataset.sort;
+      if (drilldown.sortBy === key) {
+        drilldown.sortDir = drilldown.sortDir === "desc" ? "asc" : "desc";
+      } else {
+        drilldown.sortBy  = key;
+        drilldown.sortDir = (key === "original" || key === "subcategory" || key === "rule_id") ? "asc" : "desc";
+      }
+      renderGroupedView();
+      return;
+    }
+    // copy handler
+    const code = e.target.closest(".copyable");
+    if (code) {
+      e.stopPropagation();
+      const full = code.dataset.full ?? code.textContent ?? "";
+      navigator.clipboard?.writeText(full).then(() => {
+        code.classList.add("copied");
+        setTimeout(() => code.classList.remove("copied"), 600);
+      }).catch(() => {});
+      return;
+    }
+    // expand / collapse group
+    const group = e.target.closest(".dd-group");
+    if (!group) return;
+    const key = group.dataset.key;
+    if (drilldown.expandedGroups.has(key)) drilldown.expandedGroups.delete(key);
+    else drilldown.expandedGroups.add(key);
+    renderGroupedView();
+  });
 }
 
 function updateDrilldownCount(visibleGroups, totalGroups) {

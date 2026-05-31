@@ -355,7 +355,37 @@ h2 {
   margin-left: 4px;
 }
 
-/* ── grouped view ────────────────────────────────────────────────────── */
+/* ── grouped view header (sortable columns) ──────────────────────────── */
+.dd-group-header {
+  display: grid;
+  grid-template-columns: 44px 1fr auto auto 120px 16px;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 10px 6px;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--bg-elev1);
+  border-bottom: 1px solid var(--border);
+  border-radius: 6px 6px 0 0;
+  margin-bottom: 2px;
+}
+
+.dd-gh-cell {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--fg-dim);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  padding: 3px 0;
+  transition: color 100ms ease-out;
+}
+.dd-gh-cell:hover { color: var(--fg); }
+.dd-gh-active { color: var(--accent) !important; }
+.dd-gh-spacer { cursor: default; pointer-events: none; }
 .dd-grouped-list {
   display: flex;
   flex-direction: column;
