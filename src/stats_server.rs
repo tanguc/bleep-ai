@@ -172,6 +172,46 @@ async fn post_dictionary_reset() -> Json<ResetResp> {
     Json(ResetResp { deleted })
 }
 
+// ── admin: enable / disable ────────────────────────────────────────────────
+// The disabled flag lives at ~/.bleep/disabled. When present the wrapper
+// skips proxy setup on every claude invocation (persistent bypass mode).
+// These endpoints let the GUI toggle the flag without a shell command.
+
+fn disabled_flag_path() -> std::path::PathBuf {
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+    std::path::PathBuf::from(home).join(".bleep").join("disabled")
+}
+
+#[derive(Serialize)]
+struct EnabledResp {
+    enabled: bool,
+}
+
+/// GET /admin/enabled — returns whether bleep is currently active.
+async fn get_admin_enabled() -> Json<EnabledResp> {
+    Json(EnabledResp { enabled: !disabled_flag_path().exists() })
+}
+
+/// POST /admin/disable — write the disabled flag so future wrapper invocations
+/// enter bypass mode. Does NOT kill the running gateway.
+async fn post_admin_disable() -> Json<EnabledResp> {
+    let flag = disabled_flag_path();
+    if let Some(parent) = flag.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::File::create(&flag);
+    eprintln!("[admin] bleep disabled (flag: {})", flag.display());
+    Json(EnabledResp { enabled: false })
+}
+
+/// POST /admin/enable — remove the disabled flag so the wrapper resumes proxying.
+async fn post_admin_enable() -> Json<EnabledResp> {
+    let flag = disabled_flag_path();
+    let _ = std::fs::remove_file(&flag);
+    eprintln!("[admin] bleep enabled (flag removed)");
+    Json(EnabledResp { enabled: true })
+}
+
 #[derive(Deserialize)]
 struct PerfQuery {
     reset: Option<u8>,
@@ -211,6 +251,9 @@ fn router() -> Router {
         .route("/perf", get(get_perf))
         .route("/perf/reset", post(post_perf_reset))
         .route("/dictionary/reset", post(post_dictionary_reset))
+        .route("/admin/enabled", get(get_admin_enabled))
+        .route("/admin/disable", post(post_admin_disable))
+        .route("/admin/enable",  post(post_admin_enable))
         .fallback(not_found)
         .layer(cors)
 }

@@ -591,10 +591,42 @@ async function refreshSettings() {
   const statusEl = document.getElementById("s-status");
   if (portEl) portEl.textContent = port ? `127.0.0.1:${port}` : "—";
   if (statusEl) statusEl.textContent = port ? "Connected" : "Not connected";
-  // events port is read by the Rust side only — we surface its existence
   if (evPortEl) evPortEl.textContent = "(see /tmp/bleep-events.port)";
   setConnection(!!port);
   wireSettingsActions();
+  if (port) wireEnabledToggle(port);
+}
+
+async function wireEnabledToggle(port) {
+  const btn = document.getElementById("s-enabled-toggle");
+  if (!btn || btn.dataset.wired) return;
+  btn.dataset.wired = "1";
+
+  const setUi = (enabled) => {
+    btn.setAttribute("aria-pressed", String(enabled));
+    btn.classList.toggle("s-onoff--off", !enabled);
+    btn.querySelector(".s-onoff-label").textContent = enabled ? "on" : "off";
+  };
+
+  // fetch current state
+  try {
+    const { enabled } = await fetchJson(port, "/admin/enabled");
+    setUi(enabled);
+  } catch (_) {}
+
+  btn.addEventListener("click", async () => {
+    const currently = btn.getAttribute("aria-pressed") === "true";
+    const next = !currently;
+    setUi(next); // optimistic
+    try {
+      const r = await fetch(`http://127.0.0.1:${port}${next ? "/admin/enable" : "/admin/disable"}`,
+        { method: "POST" });
+      const { enabled } = await r.json();
+      setUi(enabled);
+    } catch (_) {
+      setUi(currently); // revert on error
+    }
+  });
 }
 
 let settingsActionsWired = false;

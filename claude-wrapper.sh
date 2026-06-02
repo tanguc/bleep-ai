@@ -86,12 +86,51 @@ _print_banner() {
 }
 _wlog "==== wrapper invoked: args=[$*] cwd=$(pwd)"
 
+# ── disable / enable subcommands ─────────────────────────────────────────────
+# Persistent on/off toggle. Written to ~/.bleep/disabled so it survives
+# restarts. When the flag exists the wrapper enters bypass mode automatically
+# on every invocation (same as BLEEP_BYPASS=1) until 'bleep enable' removes it.
+_BLEEP_DISABLED_FLAG="$HOME/.bleep/disabled"
+
+if [ "${1:-}" = "disable" ]; then
+    mkdir -p "$(dirname "$_BLEEP_DISABLED_FLAG")"
+    touch "$_BLEEP_DISABLED_FLAG"
+    _say "bleep disabled — future claude sessions will go direct to anthropic"
+    _say "run 'bleep enable' to re-activate redaction"
+    # stop any running gateway
+    _stats_port="$(cat /tmp/bleep-stats.port 2>/dev/null || true)"
+    if [ -n "$_stats_port" ] && curl -sf "http://127.0.0.1:${_stats_port}/health" >/dev/null 2>&1; then
+        curl -sf -X POST "http://127.0.0.1:${_stats_port}/admin/disable" >/dev/null 2>&1 || true
+    fi
+    unset _stats_port
+    exit 0
+fi
+
+if [ "${1:-}" = "enable" ]; then
+    rm -f "$_BLEEP_DISABLED_FLAG"
+    _say "bleep enabled — proxy will start on next 'claude' invocation"
+    # notify a running gateway (it can update its in-memory state)
+    _stats_port="$(cat /tmp/bleep-stats.port 2>/dev/null || true)"
+    if [ -n "$_stats_port" ]; then
+        curl -sf -X POST "http://127.0.0.1:${_stats_port}/admin/enable" >/dev/null 2>&1 || true
+    fi
+    unset _stats_port
+    exit 0
+fi
+
 # ── bypass mode ──────────────────────────────────────────────────────────────
 # Skip the proxy entirely — useful when bleep is misbehaving or for A/B testing
 # claude with vs without redaction. Triggered by either:
 #   BLEEP_BYPASS=1 claude ...
 #   claude --no-bleep ...   (flag is consumed; not forwarded to claude)
+#   ~/.bleep/disabled exists  (set by 'bleep disable')
 _BLEEP_BYPASS="${BLEEP_BYPASS:-0}"
+# persistent disable flag overrides everything except an explicit BLEEP_BYPASS=1
+# env set by the user (which is used by bclaude and should always bypass).
+if [ "$_BLEEP_BYPASS" = "0" ] && [ -f "$_BLEEP_DISABLED_FLAG" ]; then
+    _BLEEP_BYPASS=1
+    _wlog "bypass: persistent disable flag present at $_BLEEP_DISABLED_FLAG"
+fi
 _FILTERED_ARGS=()
 for _arg in "$@"; do
     case "$_arg" in

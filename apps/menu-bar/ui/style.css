@@ -864,6 +864,65 @@ h2 {
 
 /* ── settings ────────────────────────────────────────────────────────── */
 
+/* enable/disable master toggle */
+.s-toggle-panel { padding: 14px 16px; }
+.s-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.s-toggle-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fg);
+  margin-bottom: 3px;
+}
+.s-toggle-desc { font-size: 11px; }
+
+/* iOS-style on/off switch */
+.s-onoff {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+}
+.s-onoff-track {
+  width: 40px;
+  height: 22px;
+  border-radius: 11px;
+  background: var(--green);
+  position: relative;
+  transition: background 180ms ease-out;
+  flex-shrink: 0;
+}
+.s-onoff--off .s-onoff-track { background: var(--bg-elev3); }
+.s-onoff-thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 180ms ease-out;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.35);
+}
+.s-onoff--off .s-onoff-thumb { transform: none; }
+.s-onoff:not(.s-onoff--off) .s-onoff-thumb { transform: translateX(18px); }
+.s-onoff-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--green);
+  min-width: 16px;
+  transition: color 180ms ease-out;
+}
+.s-onoff--off .s-onoff-label { color: var(--fg-dim); }
+
 .settings-actions { display: flex; gap: 10px; flex-wrap: wrap; }
 
 /* destructive-zone callout — red-tinted so the buttons below read as a

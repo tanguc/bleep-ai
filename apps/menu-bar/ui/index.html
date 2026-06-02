@@ -215,6 +215,20 @@
       <h1>Settings</h1>
       <div class="dim">connection and runtime info</div>
     </header>
+
+    <section class="panel s-toggle-panel">
+      <div class="s-toggle-row">
+        <div class="s-toggle-text">
+          <div class="s-toggle-label">Bleep active</div>
+          <div class="s-toggle-desc dim">when disabled, claude connects direct to anthropic — no redaction</div>
+        </div>
+        <button type="button" id="s-enabled-toggle" class="s-onoff" aria-pressed="true">
+          <span class="s-onoff-track"><span class="s-onoff-thumb"></span></span>
+          <span class="s-onoff-label">on</span>
+        </button>
+      </div>
+    </section>
+
     <section class="panel">
       <h2>Gateway</h2>
       <div class="kv">
