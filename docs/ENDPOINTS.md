@@ -449,19 +449,19 @@ Status: 401
 
 ## 5. OpenTelemetry
 
-`POST https://infra-home-monitoring-otel.sergentanguc.com/v1/metrics`
-`POST https://infra-home-monitoring-otel.sergentanguc.com/v1/logs`
+`POST https://<your-otel-collector>/v1/metrics`
+`POST https://<your-otel-collector>/v1/logs`
 
 **Format:** Binary protobuf (not JSON). Gzip-compressed.
 
-Decoded resource attributes from protobuf:
+Decoded resource attributes from protobuf (example):
 
 ```
-project     = "sergen_infra_home"
+project     = "example_project"
 team        = "homelab"
 environment = "personal"
 device      = "macos"
-machine     = "macbook_pro"
+machine     = "workstation"
 host.arch   = "arm64"
 os.type     = "darwin"
 os.version  = "24.6.0"

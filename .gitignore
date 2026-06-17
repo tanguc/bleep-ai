@@ -7,13 +7,20 @@
 bleep-stats.db
 bleep-stats.db-shm
 bleep-stats.db-wal
-.DS_Store
-docs/.DS_Store
+**/.DS_Store
+
+# machine-specific install state written by the wrapper at runtime
+.claude-path
+
+# python tooling artifacts
+__pycache__/
+*.pyc
+.eval-venv/
 
 # editor / tooling state
 .task/
 claude-wrapper.sh~
 
-# project-local Claude config (machine-specific)
+# project-local config (machine-specific)
 .claude/
-.eval-venv/
+.planning/

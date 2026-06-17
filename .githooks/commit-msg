@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# commit-msg — reject commit messages that are not valid Conventional Commits.
+#
+# This is the real enforcement point for the release pipeline: release.yml's
+# `cog check` is only a warning, so a bad message caught here is the only thing
+# standing between a typo and a non-conventional commit on main.
+#
+# Enabled by pointing git at this directory:
+#   git config core.hooksPath .githooks
+# (the installer / repo setup does this; see README).
+set -euo pipefail
+
+msg_file="$1"
+msg="$(cat "$msg_file")"
+
+# Skip messages cocogitto can't or shouldn't lint: auto-merge/fixup/squash,
+# and revert commits. Conventional bump commits from CI never reach this hook.
+case "$msg" in
+  "Merge "* | "fixup! "* | "squash! "* | "Revert "*) exit 0 ;;
+esac
+
+if ! command -v cog >/dev/null 2>&1; then
+  echo "commit-msg: cocogitto (cog) not installed — conventional-commit lint skipped." >&2
+  echo "  install it so bad messages are caught before they reach main:" >&2
+  echo "    cargo install cocogitto   # or: brew install cocogitto" >&2
+  exit 0
+fi
+
+# cog verify honours cog.toml (custom types/scopes) — same rules as CI's cog check.
+if ! err="$(cog verify "$msg" 2>&1)"; then
+  echo "commit-msg: rejected — not a valid Conventional Commit." >&2
+  echo >&2
+  printf '%s\n' "$err" | sed 's/^/  /' >&2
+  echo >&2
+  echo "  format: <type>[(scope)][!]: <description>" >&2
+  echo "  types:  feat fix chore docs style refactor perf test build ci" >&2
+  echo "  e.g.:   refactor(rules): allow vendor-prefixed ids in custom.yaml" >&2
+  echo >&2
+  echo "  bypass (discouraged): git commit --no-verify" >&2
+  exit 1
+fi
