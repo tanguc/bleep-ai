@@ -19,6 +19,32 @@ ships as a lightweight gateway binary plus an optional macOS menu-bar dashboard.
 > **Scope today:** Bleep MITMs `*.anthropic.com` only. All other traffic is
 > CONNECT pass-through and is never inspected.
 
+## See it in one example
+
+You paste a stack trace into `claude` without thinking:
+
+```
+Prod is down. DB url is postgres://admin:S3cr3tP%40ss@db.acme-corp.internal:5432/payments,
+my AWS key AKIA4FROMTHEPROD7XYZ is in the env, ping me at jane.ops@acme-corp.com
+```
+
+What **api.anthropic.com** actually receives — every secret swapped for a
+same-shape fake (the model still reasons about it correctly because the
+*structure* is intact):
+
+```
+Prod is down. DB url is postgres://admin:Xq7mK2pNvR%40te@db-94217.internal:5432/payments,
+my AWS key AKIA9TQ3RBWELMX2K8VD is in the env, ping me at lena.park@example.net
+```
+
+The model's reply comes back referring to the fakes, and Bleep **restores the
+originals before your terminal sees it** — so the answer is about *your* real
+database and key, while Anthropic only ever saw the look-alikes. Same mapping
+every time (`AKIA4FROMTHEPROD7XYZ` → `AKIA9TQ3RBWELMX2K8VD` is cached), so
+multi-turn conversations stay coherent.
+
+Nothing was configured. You just ran `claude`.
+
 ## How it works
 
 1. A local proxy terminates TLS for `*.anthropic.com` using a **per-machine CA**
