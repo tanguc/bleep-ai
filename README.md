@@ -39,19 +39,19 @@ ships as a small gateway binary plus an optional macOS menu-bar dashboard.
 
 ## See it in one exchange
 
-**You type** &nbsp;—&nbsp; real secrets, pasted without thinking:
+You paste a stack trace into `claude` without thinking. Bleep rewrites it in
+flight — the **red** lines are what you typed (they never leave your machine);
+the **green** lines are all `api.anthropic.com` ever receives:
 
-```text
-DB is down: postgres://admin:S3cr3tP%40ss@db.acme.internal/payments
-AWS key AKIA4FROMTHEPROD7XYZ — ping jane.ops@acme-corp.com
+```diff
+- DB is down: postgres://admin:S3cr3tP%40ss@db.acme.internal/payments
+- AWS key AKIA4FROMTHEPROD7XYZ — ping jane.ops@acme-corp.com
++ DB is down: postgres://admin:Xq7mK2pNvR%40te@db-71f3.internal/payments
++ AWS key AKIA9TQ3RBWELMX2K8VD — ping lena.park@example.net
 ```
 
-**`api.anthropic.com` receives** &nbsp;—&nbsp; only look-alikes, each one shape-for-shape:
-
-```text
-DB is down: postgres://admin:Xq7mK2pNvR%40te@db-71f3.internal/payments
-AWS key AKIA9TQ3RBWELMX2K8VD — ping lena.park@example.net
-```
+Every substitution is **shape-for-shape**, so the model reasons about the
+structure exactly as it would the real thing:
 
 | What you wrote | What the provider saw | Rule |
 | :-- | :-- | :-- |
