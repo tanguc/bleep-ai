@@ -29,6 +29,9 @@ bytes = "1.11.1"
 fs_extra = "1.3.0"
 serde-jsonlines = "0.7.0"
 hudsucker = "0.24.0"
+# direct dep for per-install MITM CA generation (src/ca.rs). pinned to the same
+# 0.14 line hudsucker re-exports so the rcgen types unify to one instance.
+rcgen = "0.14"
 hyper-rustls = { version = "0.27", default-features = false, features = ["webpki-roots", "http1", "http2", "aws-lc-rs", "tls12"] }
 hyper-util = { version = "0.1", features = ["client-legacy", "tokio"] }
 tower = { version = "0.5", features = ["util"] }

@@ -41,7 +41,7 @@ fi
 # to the system trust store and rejects hudsucker's MITM cert with
 # `received fatal alert: BadCertificate`. Setting Bun's own CA env var
 # alongside NODE_EXTRA_CA_CERTS makes both runtimes happy.
-CERT="$REPO_ROOT/src/cert.pem"
+CERT="$HOME/.bleep/ca/cert.pem"
 [[ -f "$CERT" ]] || { echo "missing $CERT — restart the gateway to regenerate" >&2; exit 1; }
 export NODE_EXTRA_CA_CERTS="$CERT"
 export BUN_CA_BUNDLE_PATH="$CERT"

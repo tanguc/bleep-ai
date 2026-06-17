@@ -25,7 +25,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
 PROXY_PORT="${PROXY_PORT:-9190}"
-CERT="$REPO_ROOT/src/cert.pem"
+CERT="$HOME/.bleep/ca/cert.pem"
 
 PROMPT="${*:-Debug help. AWS key AKIAIOSFODNN7EXAMPLE, GitHub ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef0123, email john.doe@company.com, card 4111111111111111, SSN 123-45-6789.}"
 

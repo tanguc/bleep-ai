@@ -310,6 +310,7 @@ dependencies = [
  "rand 0.8.5",
  "ratatui",
  "rayon",
+ "rcgen",
  "regex",
  "reqwest",
  "rusqlite",

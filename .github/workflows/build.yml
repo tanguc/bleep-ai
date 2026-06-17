@@ -32,11 +32,11 @@ jobs:
         run: |
           set -euo pipefail
           STAGE="$RUNNER_TEMP/stage"
-          mkdir -p "$STAGE/bin" "$STAGE/lib/bleep/src"
+          mkdir -p "$STAGE/bin" "$STAGE/lib/bleep"
           cp "target/${{ matrix.target }}/release/bleep-gateway" "$STAGE/bin/bleep-gateway"
           cp claude-wrapper.sh "$STAGE/lib/bleep/bleep-wrapper.sh"
           chmod +x "$STAGE/lib/bleep/bleep-wrapper.sh"
-          bash scripts/extract-cert.sh "$STAGE/lib/bleep/src"
+          # no CA staged — generated per-machine on first launch (src/ca.rs)
           VERSION="${GITHUB_REF_NAME#v}"
           echo "$VERSION" > "$STAGE/.version"
       - name: Package archive

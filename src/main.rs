@@ -1,3 +1,4 @@
+mod ca;
 mod content_router;
 mod detection;
 mod devmode;

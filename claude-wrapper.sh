@@ -155,9 +155,14 @@ else
 #                         in NO_PROXY below — the only way to keep Go-based MCP
 #                         servers (github-mcp-server uses `go run …`) happy
 #                         without trusting the bleep CA in the system keychain.
-export NODE_EXTRA_CA_CERTS="$SCRIPT_DIR/src/cert.pem"
-export BUN_CA_BUNDLE_PATH="$SCRIPT_DIR/src/cert.pem"
-export SSL_CERT_FILE="$SCRIPT_DIR/src/cert.pem"
+# The CA is generated per-machine on first gateway launch (see src/ca.rs); it
+# lives at ~/.bleep/ca/cert.pem and is NOT shipped or baked into the binary.
+# The gateway auto-start below blocks on gateway health, so the file exists by
+# the time claude actually opens a connection and reads it.
+_BLEEP_CA_CERT="$HOME/.bleep/ca/cert.pem"
+export NODE_EXTRA_CA_CERTS="$_BLEEP_CA_CERT"
+export BUN_CA_BUNDLE_PATH="$_BLEEP_CA_CERT"
+export SSL_CERT_FILE="$_BLEEP_CA_CERT"
 export HTTP_PROXY=http://localhost:9190
 export HTTPS_PROXY=http://localhost:9190
 # Only route Anthropic API traffic through bleep. MCP servers (github,
@@ -168,7 +173,7 @@ export HTTPS_PROXY=http://localhost:9190
 # NOTE: the gateway's should_intercept hook decides not to MITM these, but
 # hudsucker 0.24's pass-through path errors on CONNECT URIs without a port
 # (which is how bun/node clients send them), so we still need this list.
-# export NO_PROXY="github.com,api.github.com,*.cloudflare.com,api.cloudflare.com,*.azure.com,*.microsoftonline.com,management.azure.com,login.microsoftonline.com,*.googleapis.com,generativelanguage.googleapis.com,*.miro.com,api.miro.com,proxy.golang.org,sum.golang.org,go.dev,*.1password.com,stone34.sergentanguc.com,localhost,127.0.0.1"
+# export NO_PROXY="github.com,api.github.com,*.cloudflare.com,api.cloudflare.com,*.azure.com,*.microsoftonline.com,management.azure.com,login.microsoftonline.com,*.googleapis.com,generativelanguage.googleapis.com,*.miro.com,api.miro.com,proxy.golang.org,sum.golang.org,go.dev,*.1password.com,localhost,127.0.0.1"
 
 # request logging for the eval pipeline. only consumed by a gateway THIS
 # wrapper spawns (see gateway auto-start below) — a child inherits this env.
@@ -195,7 +200,7 @@ bleep status
   proxy           : http://localhost:9190
   gateway healthy : ${_gw_healthy}
   real claude     : ${_stored_claude}
-  CA cert         : ${SCRIPT_DIR}/src/cert.pem
+  CA cert         : ${_BLEEP_CA_CERT}
 STATUS
     unset _stats_port _gw_healthy _stored_claude
     exit 0

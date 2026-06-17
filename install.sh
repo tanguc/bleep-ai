@@ -157,7 +157,7 @@ install_gateway_archive() {
   local archive="bleep-gateway-${TARGET}.tar.gz"
   tar -xzf "${TMP}/${archive}" -C "${TMP}/extract"
 
-  mkdir -p "${PREFIX}/bin" "${PREFIX}/${INSTALL_LIB_REL}/src"
+  mkdir -p "${PREFIX}/bin" "${PREFIX}/${INSTALL_LIB_REL}"
 
   # idempotency: remove stale non-symlink bleep binary from older layout
   if [ -e "${PREFIX}/bin/bleep" ] && [ ! -L "${PREFIX}/bin/bleep" ]; then
@@ -166,11 +166,11 @@ install_gateway_archive() {
 
   mv -f "${TMP}/extract/bin/bleep-gateway"          "${PREFIX}/bin/bleep-gateway"
   mv -f "${TMP}/extract/lib/bleep/bleep-wrapper.sh" "${PREFIX}/${INSTALL_LIB_REL}/bleep-wrapper.sh"
-  mv -f "${TMP}/extract/lib/bleep/src/cert.pem"     "${PREFIX}/${INSTALL_LIB_REL}/src/cert.pem"
   mv -f "${TMP}/extract/.version"                   "${PREFIX}/${INSTALL_LIB_REL}/.version"
 
   chmod 0755 "${PREFIX}/bin/bleep-gateway" "${PREFIX}/${INSTALL_LIB_REL}/bleep-wrapper.sh"
-  chmod 0644 "${PREFIX}/${INSTALL_LIB_REL}/src/cert.pem"
+  # the MITM CA is generated per-machine into ~/.bleep/ca/ on first gateway
+  # launch (see src/ca.rs) — nothing to ship or trust at install time.
 
   ln -sf "${PREFIX}/${INSTALL_LIB_REL}/bleep-wrapper.sh" "${PREFIX}/bin/bleep"
   log "installed bleep-gateway and wrapper"
@@ -541,7 +541,7 @@ print_summary() {
     gateway binary : ${PREFIX}/bin/bleep-gateway
     bleep command  : ${PREFIX}/bin/bleep  (symlink)
     wrapper script : ${PREFIX}/${INSTALL_LIB_REL}/bleep-wrapper.sh
-    CA cert        : ${PREFIX}/${INSTALL_LIB_REL}/src/cert.pem
+    CA cert        : ~/.bleep/ca/cert.pem  (generated on first launch)
     claude override: ${claude_status}
     app bundle     : ${app_path}
     LaunchAgent    : ${la_status}
@@ -580,16 +580,15 @@ build_local_artifacts() {
 }
 
 install_gateway_local() {
-  mkdir -p "${PREFIX}/bin" "${PREFIX}/${INSTALL_LIB_REL}/src"
+  mkdir -p "${PREFIX}/bin" "${PREFIX}/${INSTALL_LIB_REL}"
   if [ -e "${PREFIX}/bin/bleep" ] && [ ! -L "${PREFIX}/bin/bleep" ]; then
     rm -f "${PREFIX}/bin/bleep"
   fi
   cp "target/release/bleep-gateway"  "${PREFIX}/bin/bleep-gateway"
   cp "claude-wrapper.sh"             "${PREFIX}/${INSTALL_LIB_REL}/bleep-wrapper.sh"
-  bash "scripts/extract-cert.sh"     "${PREFIX}/${INSTALL_LIB_REL}/src"
   echo "local"                      > "${PREFIX}/${INSTALL_LIB_REL}/.version"
   chmod 0755 "${PREFIX}/bin/bleep-gateway" "${PREFIX}/${INSTALL_LIB_REL}/bleep-wrapper.sh"
-  chmod 0644 "${PREFIX}/${INSTALL_LIB_REL}/src/cert.pem"
+  # CA is generated per-machine into ~/.bleep/ca/ on first launch (src/ca.rs)
   ln -sf "${PREFIX}/${INSTALL_LIB_REL}/bleep-wrapper.sh" "${PREFIX}/bin/bleep"
   log "installed bleep-gateway and wrapper"
 }

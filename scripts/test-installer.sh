@@ -36,8 +36,8 @@ exec "$@"
 FAKEWRAP
 chmod +x "$STAGE_GW/lib/bleep/bleep-wrapper.sh"
 
-# cert.pem — copy from repo source
-bash "$ROOT/scripts/extract-cert.sh" "$STAGE_GW/lib/bleep/src"
+# no cert.pem staged — the MITM CA is generated per-machine on first gateway
+# launch (src/ca.rs), so it is not part of the release archive.
 
 echo "0.0.0-test" > "$STAGE_GW/.version"
 
@@ -72,7 +72,6 @@ BLEEP_RELEASE_BASE="file://$RELEASE_DIR" \
 [ -x "$PREFIX/bin/bleep-gateway" ]                || die "bleep-gateway not installed"
 [ -L "$PREFIX/bin/bleep" ]                        || die "bleep is not a symlink"
 [ -f "$PREFIX/lib/bleep/bleep-wrapper.sh" ]       || die "wrapper not installed"
-[ -f "$PREFIX/lib/bleep/src/cert.pem" ]           || die "cert.pem not installed"
 [ -f "$PREFIX/lib/bleep/.version" ]               || die ".version not installed"
 
 target="$(readlink "$PREFIX/bin/bleep")"
@@ -82,8 +81,6 @@ case "$target" in
 esac
 
 grep -q "0.0.0-test" "$PREFIX/lib/bleep/.version" || die ".version content wrong"
-cmp "$STAGE_GW/lib/bleep/src/cert.pem" "$PREFIX/lib/bleep/src/cert.pem" \
-  || die "cert.pem byte-mismatch"
 
 log "install assertions passed"
 

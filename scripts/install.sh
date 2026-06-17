@@ -31,8 +31,8 @@ if ! command -v claude &>/dev/null; then
     echo "warning: 'claude' CLI not found on PATH — install it before using bleep"
 fi
 
-if [[ ! -f "$REPO_DIR/src/cert.pem" ]]; then
-    echo "warning: src/cert.pem not found — run the gateway once to generate it (task run)"
+if [[ ! -f "$HOME/.bleep/ca/cert.pem" ]]; then
+    echo "note: MITM CA not generated yet — created at ~/.bleep/ca/ on first gateway launch"
 fi
 
 chmod +x "$WRAPPER"

@@ -577,9 +577,12 @@ pub async fn run_hudsucker(port: u16, log_file: String, min_confidence: String) 
 
     println!("starting hudsucker proxy on :{port}");
 
-    let key_pair = KeyPair::from_pem(include_str!("key.pem")).expect("failed to parse private key");
-    let issuer = Issuer::from_ca_cert_pem(include_str!("cert.pem"), key_pair)
-        .expect("failed to parse CA cert");
+    // per-install CA: generated into ~/.bleep/ca/ on first launch (see src/ca.rs).
+    // never baked into the binary or the repo — the private key stays on-machine.
+    let (cert_pem, key_pem) = crate::ca::ensure_ca().expect("failed to load/generate MITM CA");
+    let key_pair = KeyPair::from_pem(&key_pem).expect("failed to parse CA private key");
+    let issuer =
+        Issuer::from_ca_cert_pem(&cert_pem, key_pair).expect("failed to parse CA cert");
     let ca = RcgenAuthority::new(issuer, 1_000, aws_lc_rs::default_provider());
 
     let handler = LogHandler {
