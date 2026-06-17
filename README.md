@@ -21,29 +21,44 @@ ships as a lightweight gateway binary plus an optional macOS menu-bar dashboard.
 
 ## See it in one example
 
+### 🧑‍💻 &nbsp; 1 — You type (the real secrets)
+
 You paste a stack trace into `claude` without thinking:
 
-```
+```text
 Prod is down. DB url is postgres://admin:S3cr3tP%40ss@db.acme-corp.internal:5432/payments,
 my AWS key AKIA4FROMTHEPROD7XYZ is in the env, ping me at jane.ops@acme-corp.com
 ```
 
-What **api.anthropic.com** actually receives — every secret swapped for a
-same-shape fake (the model still reasons about it correctly because the
-*structure* is intact):
+<div align="center">⬇ &nbsp; <em>Bleep scans, substitutes, caches the mapping</em> &nbsp; ⬇</div>
 
-```
+### 🔒 &nbsp; 2 — `api.anthropic.com` receives (only look-alikes)
+
+Every secret is swapped for a **same-shape fake** — the model still reasons
+correctly because the *structure* is intact, but no real value leaves the box:
+
+```text
 Prod is down. DB url is postgres://admin:Xq7mK2pNvR%40te@db-94217.internal:5432/payments,
 my AWS key AKIA9TQ3RBWELMX2K8VD is in the env, ping me at lena.park@example.net
 ```
 
-The model's reply comes back referring to the fakes, and Bleep **restores the
-originals before your terminal sees it** — so the answer is about *your* real
-database and key, while Anthropic only ever saw the look-alikes. Same mapping
-every time (`AKIA4FROMTHEPROD7XYZ` → `AKIA9TQ3RBWELMX2K8VD` is cached), so
-multi-turn conversations stay coherent.
+| What you wrote | What Anthropic saw | Rule |
+|---|---|---|
+| `S3cr3tP%40ss` (db password) | `Xq7mK2pNvR%40te` | url-cred |
+| `db.acme-corp.internal` | `db-94217.internal` | hostname |
+| `AKIA4FROMTHEPROD7XYZ` | `AKIA9TQ3RBWELMX2K8VD` | aws-key |
+| `jane.ops@acme-corp.com` | `lena.park@example.net` | email |
 
-Nothing was configured. You just ran `claude`.
+<div align="center">⬇ &nbsp; <em>model replies about the fakes — Bleep reverses the mapping</em> &nbsp; ⬇</div>
+
+### ✅ &nbsp; 3 — Your terminal shows (originals restored)
+
+The reply comes back referring to *your* real database and key — Bleep restores
+every fake to its original before your terminal sees it. The mapping is cached,
+so `AKIA4FROMTHEPROD7XYZ` maps to the same fake every turn and multi-turn
+conversations stay coherent.
+
+> **Nothing was configured. You just ran `claude`.**
 
 ## How it works
 
