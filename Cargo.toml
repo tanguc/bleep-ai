@@ -2,6 +2,11 @@
 name = "bleep-gateway"
 version = "0.1.0"
 edition = "2024"
+description = "Local redaction proxy that scrubs secrets and PII from LLM API traffic before it leaves your machine"
+license = "MIT"
+repository = "https://github.com/tanguc/bleep-ai"
+authors = ["Sergen Tanguc"]
+readme = "README.md"
 
 # Workspace: gateway crate + shared bleep-events crate. The Tauri menu-bar
 # crate stays excluded (different dep tree, independent Cargo.lock); it

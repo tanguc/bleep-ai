@@ -3,6 +3,9 @@ name = "bleep-events"
 version = "0.1.0"
 edition = "2021"
 description = "Shared wire-event types between bleep-gateway, bleep-tui and the menu-bar GUI"
+license = "MIT"
+repository = "https://github.com/tanguc/bleep-ai"
+authors = ["Sergen Tanguc"]
 publish = false
 
 [dependencies]

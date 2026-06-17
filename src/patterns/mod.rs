@@ -9,15 +9,17 @@ use regex::bytes::Regex;
 
 use crate::types::rule::NormalizedRule;
 
-/// CC-BY 4.0 and other license attributions for embedded pattern sources
+/// License attributions for embedded pattern sources. See THIRD-PARTY-NOTICES.md
+/// for the authoritative list; secrets-patterns-db is CC BY-SA 4.0 (ShareAlike).
 pub const ATTRIBUTION: &str = "\
 Pattern sources:\n\
-- secrets-patterns-db (CC-BY 4.0)\n\
+- secrets-patterns-db (CC BY-SA 4.0)\n\
   Author: Mazin Ahmed / secrets-patterns-db contributors\n\
-  License: Creative Commons Attribution 4.0 (CC-BY 4.0)\n\
+  License: Creative Commons Attribution-ShareAlike 4.0 (CC BY-SA 4.0)\n\
   URL: https://github.com/mazen160/secrets-patterns-db\n\
 - gitleaks (MIT): https://github.com/gitleaks/gitleaks\n\
-- nosey-parker (Apache-2.0): https://github.com/praetorian-inc/noseyparker";
+- nosey-parker (Apache-2.0): https://github.com/praetorian-inc/noseyparker\n\
+- detect-secrets (Apache-2.0): https://github.com/Yelp/detect-secrets";
 
 /// wrapper to deserialize combined.yaml which has a `rules:` top-level key
 #[derive(serde::Deserialize)]
