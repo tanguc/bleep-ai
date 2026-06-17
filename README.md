@@ -1,12 +1,42 @@
 # Bleep
 
-Bleep is a local MITM proxy that intercepts Claude API traffic, redacts sensitive content from
-requests, and forwards the sanitised payloads to Anthropic. It ships as a self-contained macOS
-app plus a lightweight gateway binary.
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
+[![Platform: macOS](https://img.shields.io/badge/platform-macOS-lightgrey.svg)](#install)
+
+**Bleep is a local redaction proxy for LLM API traffic.** It sits between your
+machine and the model provider, detects secrets and PII in outbound requests
+(API keys, tokens, emails, credit cards, connection strings, …), swaps them for
+realistic fakes, and forwards the sanitised payload. Nothing sensitive leaves
+your machine. Responses are de-anonymised on the way back so the tooling you use
+never sees the difference.
+
+It ships as a lightweight gateway binary plus an optional macOS menu-bar
+dashboard, and transparently wraps the `claude` CLI so redaction is on by
+default with zero workflow change.
+
+> **Scope today:** Bleep MITMs `*.anthropic.com` only. All other traffic is
+> CONNECT pass-through and is never inspected.
+
+## How it works
+
+1. A local proxy terminates TLS for `*.anthropic.com` using a **per-machine CA**
+   that is generated on first launch into `~/.bleep/ca/` (the private key never
+   leaves your machine and is never shipped — see [Security](#security)).
+2. Outbound request bodies are scanned against ~400 detection rules. Matches are
+   replaced with format-preserving fakes; the original→fake mapping is cached in
+   a local SQLite dictionary so the same secret always maps to the same fake.
+3. The sanitised request is forwarded upstream. The streamed response is
+   de-anonymised back to the real values before your tool sees it.
+
+```
+claude ──▶ bleep proxy ──[redacted]──▶ api.anthropic.com
+                 ▲                              │
+                 └────────[de-anonymised]◀──────┘
+```
 
 ## Install
 
-Requires macOS (Intel or Apple Silicon). One-liner:
+Requires macOS (Intel or Apple Silicon):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/tanguc/bleep-ai/main/install.sh | bash
@@ -14,15 +44,30 @@ curl -fsSL https://raw.githubusercontent.com/tanguc/bleep-ai/main/install.sh | b
 
 This installs:
 
-- `bleep` on your PATH (`~/.local/bin/bleep`) — wraps `claude` with the proxy env vars
+- `bleep` on your PATH (`~/.local/bin/bleep`) — wraps `claude` with the proxy env
 - `bleep-gateway` binary (`~/.local/bin/bleep-gateway`)
 - `Bleep.app` in `/Applications` (or `~/Applications` if the former isn't writable)
+- `bclaude` — a bypass-mode alias that runs `claude` direct, no proxy
 
-### Optional: auto-start the gateway on login
+> Piping a remote script to `bash` requires trust. Read
+> [`install.sh`](./install.sh) first if you prefer — it is self-contained and
+> macOS-only.
+
+### Auto-start the gateway on login
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/tanguc/bleep-ai/main/install.sh | bash -s -- --launch-agent
 ```
+
+### Enable / disable
+
+```bash
+bleep disable    # future claude sessions go direct to anthropic (no redaction)
+bleep enable     # re-activate
+bleep status     # show proxy + gateway health + CA path
+```
+
+The menu-bar app's Settings page has the same toggle.
 
 ### Uninstall
 
@@ -30,39 +75,46 @@ curl -fsSL https://raw.githubusercontent.com/tanguc/bleep-ai/main/install.sh | b
 bash <(curl -fsSL https://raw.githubusercontent.com/tanguc/bleep-ai/main/install.sh) --uninstall
 ```
 
-Or if you already have it locally: `bash ~/path/to/install.sh --uninstall`.
+User data (`~/Library/Application Support/bleep`, the generated CA at
+`~/.bleep/ca/`, and the fake dictionary at `~/.bleep/bleep-dictionary.db`) is NOT
+removed automatically — delete those manually for a full wipe.
 
-User data (`~/Library/Application Support/bleep`, `~/.local/lib/bleep/src/cert.pem`-derived
-keychain trust) is NOT removed automatically — delete those manually if you want a full wipe.
-
-## Development
-
-### Prerequisites
-
-- Rust (stable toolchain)
-- [Task](https://taskfile.dev) — `brew install go-task`
-- [cocogitto](https://docs.cocogitto.io/) — `brew install cocogitto` (only needed for commits)
-
-### First-time setup (per clone)
+## Build from source
 
 ```bash
-task install-hooks       # installs cocogitto commit-msg + pre-push hooks
+# prerequisites: Rust (stable), Task (brew install go-task)
+git clone https://github.com/tanguc/bleep-ai
+cd bleep-ai
+git config core.hooksPath .githooks   # conventional-commit checks (contributors)
+
+task build           # release gateway binary
+task run             # run gateway on dev ports (won't collide with an installed Bleep.app)
+task test            # run the full test suite
+task menu-bar        # build + run the menu-bar dashboard in dev mode
+task install-local   # build + install locally exactly like the real installer (no GH download)
 ```
 
-### Quick start
+## Security
 
-```bash
-task build               # build release binary
-task run                 # run gateway (debug, dev ports — won't collide with installed Bleep.app)
-task test                # run all tests
-task menu-bar            # build + run the menu-bar dashboard (dev mode)
-task install-local       # build release artifacts and install them locally (no GH download)
-```
+Bleep is a TLS-intercepting proxy. That makes the **CA private key** the most
+sensitive thing on the system: anything that trusts the CA can be impersonated.
 
-### Commit conventions
+- The CA is **generated per machine** on first launch into `~/.bleep/ca/`
+  (directory `0700`, key `0600`). It is never baked into the binary, never
+  shipped in a release, and never committed to this repository.
+- Client trust is scoped via environment variables (`NODE_EXTRA_CA_CERTS`,
+  `BUN_CA_BUNDLE_PATH`, `SSL_CERT_FILE`) pointed at the generated cert — Bleep
+  does **not** add itself to the system keychain.
+- The proxy binds to `127.0.0.1` only.
 
-All commits MUST be [Conventional Commits](https://www.conventionalcommits.org/). The local hooks
-installed by `task install-hooks` enforce this. CI re-checks on every push.
+Found a vulnerability? See [`SECURITY.md`](./SECURITY.md) for responsible
+disclosure — please do not open a public issue for security reports.
+
+## Contributing
+
+Contributions welcome. Please read [`CONTRIBUTING.md`](./CONTRIBUTING.md). In
+short: conventional commits (enforced by `.githooks/commit-msg`), `cargo fmt` +
+`cargo clippy` clean, tests passing.
 
 | Type     | Bump  | Example                                           |
 |----------|-------|---------------------------------------------------|
@@ -70,17 +122,13 @@ installed by `task install-hooks` enforce this. CI re-checks on every push.
 | `fix`    | patch | `fix(gateway): evict hung connection on :9190`    |
 | `perf`   | patch | `perf(rules): compile regexes in parallel`        |
 | `feat!`  | major | `feat!: drop pre-v1 /redactions response shape`   |
-| `chore`  | none  | `chore(deps): bump tauri to 2.4`                  |
-| `docs`   | none  | `docs(readme): clarify dev-port partitioning`     |
-| `refactor` / `test` / `ci` / `build` / `style` | none | |
+| `chore` / `docs` / `refactor` / `test` / `ci` / `build` / `style` | none | |
 
-### Release procedure
+## License
 
-You don't run it — pushing to `main` does. See `task release` for the full description, or
-[`.github/workflows/release.yml`](.github/workflows/release.yml) for the implementation.
+[MIT](./LICENSE) © 2026 Sergen Tanguc.
 
-### Smoke-test the installer locally
-
-```bash
-task test-installer
-```
+Bleep bundles detection **pattern data** adapted from gitleaks (MIT),
+nosey-parker and detect-secrets (Apache-2.0), and secrets-patterns-db
+(**CC BY-SA 4.0** — the derived rule data carries the ShareAlike obligation).
+See [`THIRD-PARTY-NOTICES.md`](./THIRD-PARTY-NOTICES.md).
