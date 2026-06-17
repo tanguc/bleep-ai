@@ -1,6 +1,10 @@
 <div align="center">
 
-# Bl██p
+# Bleep
+
+<sub>`Bl██p` — it redacts itself</sub>
+
+<br>
 
 **Intercepts LLM API traffic and substitutes secrets, keys, and PII with realistic look-alike fakes — then restores the originals in the response.**
 
