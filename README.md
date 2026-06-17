@@ -3,14 +3,14 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 [![Platform: macOS](https://img.shields.io/badge/platform-macOS-lightgrey.svg)](#install)
 
-**Bleep is a transparent MITM proxy that replaces sensitive data with
-format-preserving fakes before it reaches LLM providers.** It sits between your
-machine and the model API, detects secrets and PII in outbound requests (API
-keys, tokens, emails, credit cards, connection strings, …), and swaps each one
-for a realistic fake that keeps the original's shape — an `AKIA…` key stays an
-`AKIA…` key, an email stays a valid-looking email. Nothing sensitive leaves your
-machine. Responses are de-anonymised on the way back, so the tooling you use
-never sees the difference.
+**Bleep intercepts LLM API traffic and substitutes secrets, keys, and PII with
+realistic look-alike fakes, then restores the originals in the response.** It
+sits between your machine and the model API, detects sensitive values in
+outbound requests (API keys, tokens, emails, credit cards, connection strings,
+…), and swaps each one for a fake that keeps the original's shape — an `AKIA…`
+key stays an `AKIA…` key, an email stays a valid-looking email. Nothing
+sensitive leaves your machine. On the way back, the fakes are restored to the
+real values, so the tooling you use never sees the difference.
 
 "Transparent" means zero workflow change: Bleep wraps the `claude` CLI and
 intercepts its TLS, so redaction is on by default with nothing to configure. It
