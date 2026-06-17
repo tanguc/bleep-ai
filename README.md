@@ -71,13 +71,19 @@ provider only ever saw the look-alikes.
 
 ## How it works
 
-```
-        your machine                                       provider
-  ┌─────────────────────────────────┐
-  claude ──▶ bleep ──▶ scrub ────────┼────────────▶ api.anthropic.com
-                 ▲                    │
-   real values ◀┴─ restore ◀─ fakes ◀─┼────────────◀ streamed response
-  └─────────────────────────────────┘
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as claude
+    participant B as Bleep
+    participant P as api.anthropic.com
+    Note over C,B: your machine — nothing sensitive leaves here
+    C->>B: prompt with real secrets
+    Note over B: scan and substitute<br/>cache original to fake
+    B->>P: request — look-alikes only
+    P-->>B: streamed response (about the fakes)
+    Note over B: reverse the mapping
+    B-->>C: originals restored
 ```
 
 1. A local proxy terminates TLS for `*.anthropic.com` using a **per-machine CA**,
