@@ -3,16 +3,18 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 [![Platform: macOS](https://img.shields.io/badge/platform-macOS-lightgrey.svg)](#install)
 
-**Bleep is a local redaction proxy for LLM API traffic.** It sits between your
-machine and the model provider, detects secrets and PII in outbound requests
-(API keys, tokens, emails, credit cards, connection strings, …), swaps them for
-realistic fakes, and forwards the sanitised payload. Nothing sensitive leaves
-your machine. Responses are de-anonymised on the way back so the tooling you use
+**Bleep is a transparent MITM proxy that replaces sensitive data with
+format-preserving fakes before it reaches LLM providers.** It sits between your
+machine and the model API, detects secrets and PII in outbound requests (API
+keys, tokens, emails, credit cards, connection strings, …), and swaps each one
+for a realistic fake that keeps the original's shape — an `AKIA…` key stays an
+`AKIA…` key, an email stays a valid-looking email. Nothing sensitive leaves your
+machine. Responses are de-anonymised on the way back, so the tooling you use
 never sees the difference.
 
-It ships as a lightweight gateway binary plus an optional macOS menu-bar
-dashboard, and transparently wraps the `claude` CLI so redaction is on by
-default with zero workflow change.
+"Transparent" means zero workflow change: Bleep wraps the `claude` CLI and
+intercepts its TLS, so redaction is on by default with nothing to configure. It
+ships as a lightweight gateway binary plus an optional macOS menu-bar dashboard.
 
 > **Scope today:** Bleep MITMs `*.anthropic.com` only. All other traffic is
 > CONNECT pass-through and is never inspected.
