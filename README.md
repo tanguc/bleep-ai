@@ -16,11 +16,6 @@
 [![redaction](https://img.shields.io/badge/redaction-on%20by%20default-2FD4B3?style=flat-square&labelColor=14161B)](#how-it-works)
 [![status](https://img.shields.io/badge/status-pre--1.0-F2A33C?style=flat-square&labelColor=14161B)](#)
 
-<br>
-
-`postgres://admin:S3cr3tP%40ss@db.acme-corp.internal`&nbsp; → &nbsp;`postgres://admin:Xq7mK2pNvR%40te@db-94217.internal`
-`AKIA4FROMTHEPROD7XYZ`&nbsp; → &nbsp;`AKIA9TQ3RBWELMX2K8VD`&nbsp; · &nbsp;`jane.ops@acme-corp.com`&nbsp; → &nbsp;`lena.park@example.net`
-
 </div>
 
 ---
@@ -44,54 +39,31 @@ ships as a small gateway binary plus an optional macOS menu-bar dashboard.
 
 ## See it in one exchange
 
-<table>
-<tr><td>
-
-**1 · You type** &nbsp;<sub>real secrets</sub>
+**You type** &nbsp;—&nbsp; real secrets, pasted without thinking:
 
 ```text
-Prod is down. DB is postgres://admin:S3cr3tP%40ss@db.acme-corp.internal:5432/payments,
-AWS key AKIA4FROMTHEPROD7XYZ is in the env, ping me at jane.ops@acme-corp.com
+DB is down: postgres://admin:S3cr3tP%40ss@db.acme.internal/payments
+AWS key AKIA4FROMTHEPROD7XYZ — ping jane.ops@acme-corp.com
 ```
 
-</td></tr>
-</table>
-
-<div align="center"><sub>▼ &nbsp; Bleep scans, substitutes, caches the mapping &nbsp; ▼</sub></div>
-
-<table>
-<tr><td>
-
-**2 · `api.anthropic.com` receives** &nbsp;<sub>only look-alikes</sub>
+**`api.anthropic.com` receives** &nbsp;—&nbsp; only look-alikes, each one shape-for-shape:
 
 ```text
-Prod is down. DB is postgres://admin:Xq7mK2pNvR%40te@db-94217.internal:5432/payments,
-AWS key AKIA9TQ3RBWELMX2K8VD is in the env, ping me at lena.park@example.net
+DB is down: postgres://admin:Xq7mK2pNvR%40te@db-71f3.internal/payments
+AWS key AKIA9TQ3RBWELMX2K8VD — ping lena.park@example.net
 ```
-
-</td></tr>
-</table>
 
 | What you wrote | What the provider saw | Rule |
 | :-- | :-- | :-- |
 | `S3cr3tP%40ss` | `Xq7mK2pNvR%40te` | url-credential |
-| `db.acme-corp.internal` | `db-94217.internal` | hostname |
+| `db.acme.internal` | `db-71f3.internal` | hostname |
 | `AKIA4FROMTHEPROD7XYZ` | `AKIA9TQ3RBWELMX2K8VD` | aws-key |
 | `jane.ops@acme-corp.com` | `lena.park@example.net` | email |
 
-<div align="center"><sub>▲ &nbsp; model replies about the fakes — Bleep reverses the mapping &nbsp; ▲</sub></div>
-
-<table>
-<tr><td>
-
-**3 · Your terminal shows** &nbsp;<sub>originals restored</sub>
-
-The answer comes back about *your* real database and key. The mapping is cached,
-so the same secret always maps to the same fake — multi-turn conversations stay
-coherent, and the provider only ever saw the look-alikes.
-
-</td></tr>
-</table>
+**Your terminal shows** &nbsp;—&nbsp; originals restored. The model's answer comes back
+about *your* real database and key; the mapping is cached, so the same secret
+always maps to the same fake and multi-turn conversations stay coherent. The
+provider only ever saw the look-alikes.
 
 > Nothing was configured. You just ran `claude`.
 
