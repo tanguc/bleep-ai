@@ -1,171 +1,219 @@
-# Bleep
+<div align="center">
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
-[![Platform: macOS](https://img.shields.io/badge/platform-macOS-lightgrey.svg)](#install)
+# Bl██p
 
-**Bleep intercepts LLM API traffic and substitutes secrets, keys, and PII with
-realistic look-alike fakes, then restores the originals in the response.** It
-sits between your machine and the model API, detects sensitive values in
-outbound requests (API keys, tokens, emails, credit cards, connection strings,
-…), and swaps each one for a fake that keeps the original's shape — an `AKIA…`
-key stays an `AKIA…` key, an email stays a valid-looking email. Nothing
-sensitive leaves your machine. On the way back, the fakes are restored to the
-real values, so the tooling you use never sees the difference.
+**Intercepts LLM API traffic and substitutes secrets, keys, and PII with realistic look-alike fakes — then restores the originals in the response.**
 
-"Transparent" means zero workflow change: Bleep wraps the `claude` CLI and
+<br>
+
+[![license](https://img.shields.io/badge/license-MIT-2FD4B3?style=flat-square&labelColor=14161B)](./LICENSE)
+[![platform](https://img.shields.io/badge/macOS-Apple%20Silicon%20%7C%20Intel-14161B?style=flat-square&logo=apple&logoColor=white)](#install)
+[![built with rust](https://img.shields.io/badge/built%20with-Rust-14161B?style=flat-square&logo=rust&logoColor=E43717)](https://www.rust-lang.org)
+[![redaction](https://img.shields.io/badge/redaction-on%20by%20default-2FD4B3?style=flat-square&labelColor=14161B)](#how-it-works)
+[![status](https://img.shields.io/badge/status-pre--1.0-F2A33C?style=flat-square&labelColor=14161B)](#)
+
+<br>
+
+`postgres://admin:S3cr3tP%40ss@db.acme-corp.internal`&nbsp; → &nbsp;`postgres://admin:Xq7mK2pNvR%40te@db-94217.internal`
+`AKIA4FROMTHEPROD7XYZ`&nbsp; → &nbsp;`AKIA9TQ3RBWELMX2K8VD`&nbsp; · &nbsp;`jane.ops@acme-corp.com`&nbsp; → &nbsp;`lena.park@example.net`
+
+</div>
+
+---
+
+Bleep sits between your machine and the model API. It detects sensitive values
+in outbound requests — API keys, tokens, emails, credit cards, connection
+strings — and swaps each one for a fake that keeps the original's **shape**: an
+`AKIA…` key stays an `AKIA…` key, an email stays a valid-looking email. The model
+reasons about the structure just fine; the real value never leaves your machine.
+On the way back, the fakes are restored to the originals before your terminal
+sees them.
+
+"Transparent" means **zero workflow change** — Bleep wraps the `claude` CLI and
 intercepts its TLS, so redaction is on by default with nothing to configure. It
-ships as a lightweight gateway binary plus an optional macOS menu-bar dashboard.
+ships as a small gateway binary plus an optional macOS menu-bar dashboard.
 
-> **Scope today:** Bleep MITMs `*.anthropic.com` only. All other traffic is
+> **Scope today:** Bleep MITMs `*.anthropic.com` only. Everything else is
 > CONNECT pass-through and is never inspected.
 
-## See it in one example
+---
 
-### 🧑‍💻 &nbsp; 1 — You type (the real secrets)
+## See it in one exchange
 
-You paste a stack trace into `claude` without thinking:
+<table>
+<tr><td>
 
-```text
-Prod is down. DB url is postgres://admin:S3cr3tP%40ss@db.acme-corp.internal:5432/payments,
-my AWS key AKIA4FROMTHEPROD7XYZ is in the env, ping me at jane.ops@acme-corp.com
-```
-
-<div align="center">⬇ &nbsp; <em>Bleep scans, substitutes, caches the mapping</em> &nbsp; ⬇</div>
-
-### 🔒 &nbsp; 2 — `api.anthropic.com` receives (only look-alikes)
-
-Every secret is swapped for a **same-shape fake** — the model still reasons
-correctly because the *structure* is intact, but no real value leaves the box:
+**1 · You type** &nbsp;<sub>real secrets</sub>
 
 ```text
-Prod is down. DB url is postgres://admin:Xq7mK2pNvR%40te@db-94217.internal:5432/payments,
-my AWS key AKIA9TQ3RBWELMX2K8VD is in the env, ping me at lena.park@example.net
+Prod is down. DB is postgres://admin:S3cr3tP%40ss@db.acme-corp.internal:5432/payments,
+AWS key AKIA4FROMTHEPROD7XYZ is in the env, ping me at jane.ops@acme-corp.com
 ```
 
-| What you wrote | What Anthropic saw | Rule |
-|---|---|---|
-| `S3cr3tP%40ss` (db password) | `Xq7mK2pNvR%40te` | url-cred |
+</td></tr>
+</table>
+
+<div align="center"><sub>▼ &nbsp; Bleep scans, substitutes, caches the mapping &nbsp; ▼</sub></div>
+
+<table>
+<tr><td>
+
+**2 · `api.anthropic.com` receives** &nbsp;<sub>only look-alikes</sub>
+
+```text
+Prod is down. DB is postgres://admin:Xq7mK2pNvR%40te@db-94217.internal:5432/payments,
+AWS key AKIA9TQ3RBWELMX2K8VD is in the env, ping me at lena.park@example.net
+```
+
+</td></tr>
+</table>
+
+| What you wrote | What the provider saw | Rule |
+| :-- | :-- | :-- |
+| `S3cr3tP%40ss` | `Xq7mK2pNvR%40te` | url-credential |
 | `db.acme-corp.internal` | `db-94217.internal` | hostname |
 | `AKIA4FROMTHEPROD7XYZ` | `AKIA9TQ3RBWELMX2K8VD` | aws-key |
 | `jane.ops@acme-corp.com` | `lena.park@example.net` | email |
 
-<div align="center">⬇ &nbsp; <em>model replies about the fakes — Bleep reverses the mapping</em> &nbsp; ⬇</div>
+<div align="center"><sub>▲ &nbsp; model replies about the fakes — Bleep reverses the mapping &nbsp; ▲</sub></div>
 
-### ✅ &nbsp; 3 — Your terminal shows (originals restored)
+<table>
+<tr><td>
 
-The reply comes back referring to *your* real database and key — Bleep restores
-every fake to its original before your terminal sees it. The mapping is cached,
-so `AKIA4FROMTHEPROD7XYZ` maps to the same fake every turn and multi-turn
-conversations stay coherent.
+**3 · Your terminal shows** &nbsp;<sub>originals restored</sub>
 
-> **Nothing was configured. You just ran `claude`.**
+The answer comes back about *your* real database and key. The mapping is cached,
+so the same secret always maps to the same fake — multi-turn conversations stay
+coherent, and the provider only ever saw the look-alikes.
+
+</td></tr>
+</table>
+
+> Nothing was configured. You just ran `claude`.
+
+---
 
 ## How it works
 
-1. A local proxy terminates TLS for `*.anthropic.com` using a **per-machine CA**
-   that is generated on first launch into `~/.bleep/ca/` (the private key never
-   leaves your machine and is never shipped — see [Security](#security)).
-2. Outbound request bodies are scanned against ~400 detection rules. Matches are
-   replaced with format-preserving fakes; the original→fake mapping is cached in
-   a local SQLite dictionary so the same secret always maps to the same fake.
-3. The sanitised request is forwarded upstream. The streamed response is
+```
+        your machine                                       provider
+  ┌─────────────────────────────────┐
+  claude ──▶ bleep ──▶ scrub ────────┼────────────▶ api.anthropic.com
+                 ▲                    │
+   real values ◀┴─ restore ◀─ fakes ◀─┼────────────◀ streamed response
+  └─────────────────────────────────┘
+```
+
+1. A local proxy terminates TLS for `*.anthropic.com` using a **per-machine CA**,
+   generated on first launch into `~/.bleep/ca/`. The private key never leaves
+   your machine and is never shipped — see [Security](#security).
+2. Outbound bodies are scanned against ~400 detection rules. Matches are replaced
+   with format-preserving fakes; the original→fake mapping is cached in a local
+   SQLite dictionary so a given secret always maps to the same fake.
+3. The sanitised request is forwarded upstream, and the streamed response is
    de-anonymised back to the real values before your tool sees it.
 
-```
-claude ──▶ bleep proxy ──[redacted]──▶ api.anthropic.com
-                 ▲                              │
-                 └────────[de-anonymised]◀──────┘
-```
+---
 
 ## Install
 
-Requires macOS (Intel or Apple Silicon):
+macOS, Apple Silicon or Intel:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/tanguc/bleep-ai/main/install.sh | bash
 ```
 
-This installs:
+This installs `bleep` (wraps `claude`), the `bleep-gateway` binary, `Bleep.app`,
+and `bclaude` (a bypass-mode alias that runs `claude` direct, no proxy).
 
-- `bleep` on your PATH (`~/.local/bin/bleep`) — wraps `claude` with the proxy env
-- `bleep-gateway` binary (`~/.local/bin/bleep-gateway`)
-- `Bleep.app` in `/Applications` (or `~/Applications` if the former isn't writable)
-- `bclaude` — a bypass-mode alias that runs `claude` direct, no proxy
+> Piping a remote script to `bash` requires trust — [`install.sh`](./install.sh)
+> is self-contained and macOS-only, read it first if you prefer.
 
-> Piping a remote script to `bash` requires trust. Read
-> [`install.sh`](./install.sh) first if you prefer — it is self-contained and
-> macOS-only.
+<details>
+<summary><b>Auto-start on login · enable/disable · uninstall</b></summary>
 
-### Auto-start the gateway on login
+<br>
+
+Start the gateway automatically at login:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/tanguc/bleep-ai/main/install.sh | bash -s -- --launch-agent
 ```
 
-### Enable / disable
+Toggle redaction (also available in the menu-bar app's Settings):
 
 ```bash
-bleep disable    # future claude sessions go direct to anthropic (no redaction)
+bleep disable    # future claude sessions go direct to the provider
 bleep enable     # re-activate
-bleep status     # show proxy + gateway health + CA path
+bleep status     # proxy + gateway health + CA path
 ```
 
-The menu-bar app's Settings page has the same toggle.
-
-### Uninstall
+Uninstall:
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/tanguc/bleep-ai/main/install.sh) --uninstall
 ```
 
-User data (`~/Library/Application Support/bleep`, the generated CA at
-`~/.bleep/ca/`, and the fake dictionary at `~/.bleep/bleep-dictionary.db`) is NOT
-removed automatically — delete those manually for a full wipe.
+User data is preserved on uninstall — the generated CA (`~/.bleep/ca/`), the fake
+dictionary (`~/.bleep/bleep-dictionary.db`), and `~/Library/Application Support/bleep`.
+Delete those manually for a full wipe.
+
+</details>
+
+---
+
+## Security
+
+Bleep is a TLS-intercepting proxy, so the **CA private key** is the most
+sensitive thing on the system — anything that trusts the CA can be impersonated.
+
+- The CA is **generated per machine** on first launch into `~/.bleep/ca/`
+  (directory `0700`, key `0600`). It is never baked into the binary, shipped in a
+  release, or committed to this repository.
+- Client trust is scoped through environment variables (`NODE_EXTRA_CA_CERTS`,
+  `BUN_CA_BUNDLE_PATH`, `SSL_CERT_FILE`) pointed at the generated cert — Bleep
+  does **not** touch the system keychain.
+- The proxy and stats server bind to `127.0.0.1` only.
+
+Found a vulnerability? See [`SECURITY.md`](./SECURITY.md) for private disclosure
+— please don't open a public issue for security reports.
+
+---
 
 ## Build from source
 
 ```bash
-# prerequisites: Rust (stable), Task (brew install go-task)
-git clone https://github.com/tanguc/bleep-ai
-cd bleep-ai
-git config core.hooksPath .githooks   # conventional-commit checks (contributors)
+# prerequisites: Rust (stable), Task — brew install go-task
+git clone https://github.com/tanguc/bleep-ai && cd bleep-ai
+git config core.hooksPath .githooks        # conventional-commit checks
 
 task build           # release gateway binary
-task run             # run gateway on dev ports (won't collide with an installed Bleep.app)
-task test            # run the full test suite
-task menu-bar        # build + run the menu-bar dashboard in dev mode
-task install-local   # build + install locally exactly like the real installer (no GH download)
+task run             # gateway on dev ports (no collision with an installed Bleep.app)
+task test            # full test suite
+task menu-bar        # build + run the menu-bar dashboard (dev)
+task install-local   # build + install locally, exactly like the real installer
 ```
 
-## Security
+See [`docs/OPERATIONS.md`](./docs/OPERATIONS.md) for implementation notes (CA,
+fake dictionary, literal-prefix preservation, MITM scope).
 
-Bleep is a TLS-intercepting proxy. That makes the **CA private key** the most
-sensitive thing on the system: anything that trusts the CA can be impersonated.
-
-- The CA is **generated per machine** on first launch into `~/.bleep/ca/`
-  (directory `0700`, key `0600`). It is never baked into the binary, never
-  shipped in a release, and never committed to this repository.
-- Client trust is scoped via environment variables (`NODE_EXTRA_CA_CERTS`,
-  `BUN_CA_BUNDLE_PATH`, `SSL_CERT_FILE`) pointed at the generated cert — Bleep
-  does **not** add itself to the system keychain.
-- The proxy binds to `127.0.0.1` only.
-
-Found a vulnerability? See [`SECURITY.md`](./SECURITY.md) for responsible
-disclosure — please do not open a public issue for security reports.
+---
 
 ## Contributing
 
-Contributions welcome. Please read [`CONTRIBUTING.md`](./CONTRIBUTING.md). In
-short: conventional commits (enforced by `.githooks/commit-msg`), `cargo fmt` +
-`cargo clippy` clean, tests passing.
+Contributions welcome — see [`CONTRIBUTING.md`](./CONTRIBUTING.md). In short:
+[Conventional Commits](https://www.conventionalcommits.org/) (enforced by
+`.githooks/commit-msg`), `cargo fmt` + `cargo clippy` clean, tests passing.
 
-| Type     | Bump  | Example                                           |
-|----------|-------|---------------------------------------------------|
-| `feat`   | minor | `feat(menu-bar): add database reset buttons`      |
-| `fix`    | patch | `fix(gateway): evict hung connection on :9190`    |
-| `perf`   | patch | `perf(rules): compile regexes in parallel`        |
-| `feat!`  | major | `feat!: drop pre-v1 /redactions response shape`   |
-| `chore` / `docs` / `refactor` / `test` / `ci` / `build` / `style` | none | |
+| type | bump | example |
+| :-- | :-- | :-- |
+| `feat` | minor | `feat(menu-bar): add database reset buttons` |
+| `fix` | patch | `fix(gateway): evict hung connection on :9190` |
+| `perf` | patch | `perf(rules): compile regexes in parallel` |
+| `feat!` | major | `feat!: drop pre-v1 /redactions response shape` |
+| `chore` · `docs` · `refactor` · `test` · `ci` · `build` · `style` | none | |
+
+---
 
 ## License
 
@@ -173,5 +221,5 @@ short: conventional commits (enforced by `.githooks/commit-msg`), `cargo fmt` +
 
 Bleep bundles detection **pattern data** adapted from gitleaks (MIT),
 nosey-parker and detect-secrets (Apache-2.0), and secrets-patterns-db
-(**CC BY-SA 4.0** — the derived rule data carries the ShareAlike obligation).
-See [`THIRD-PARTY-NOTICES.md`](./THIRD-PARTY-NOTICES.md).
+(**CC BY-SA 4.0** — the derived rule data carries the ShareAlike obligation). Full
+attribution in [`THIRD-PARTY-NOTICES.md`](./THIRD-PARTY-NOTICES.md).
